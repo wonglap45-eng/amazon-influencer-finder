@@ -1,3 +1,5 @@
+import { RunWorkbench } from "@/components/run-workbench";
+
 const phases = [
   {
     title: "1. Input keywords",
@@ -80,8 +82,8 @@ export default function Home() {
             <div>
               <h2 className="text-2xl font-semibold">Execution flow</h2>
               <p className="mt-1 text-sm text-slate-400">
-                This page is a scaffold for now. The next step is wiring the real run
-                execution.
+                The first layer is the run lifecycle. The next layers will plug into the
+                same shell.
               </p>
             </div>
             <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 font-mono text-xs text-slate-300">
@@ -128,6 +130,8 @@ export default function Home() {
           </div>
         </aside>
       </section>
+
+      <RunWorkbench />
     </main>
   );
 }

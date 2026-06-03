@@ -4,7 +4,7 @@ type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_: Request, { params }: Params) {
   const { id } = await params;
-  const run = getRun(id);
+  const run = await getRun(id);
 
   if (!run) {
     return Response.json({ error: "not_found" }, { status: 404 });
@@ -12,4 +12,3 @@ export async function GET(_: Request, { params }: Params) {
 
   return Response.json({ run });
 }
-

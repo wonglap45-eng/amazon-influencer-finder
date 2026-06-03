@@ -4,11 +4,13 @@ function parseKeywords(input: unknown) {
   if (!Array.isArray(input)) return [];
   return input
     .map((item) => (typeof item === "string" ? item.trim() : ""))
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((item, index, arr) => arr.indexOf(item) === index);
 }
 
 export async function GET() {
-  return Response.json({ runs: listRuns() });
+  const runs = await listRuns();
+  return Response.json({ runs });
 }
 
 export async function POST(request: Request) {
@@ -19,8 +21,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "keywords_required" }, { status: 400 });
   }
 
-  const run = createRun(keywords);
+  const run = await createRun(keywords);
 
   return Response.json({ run });
 }
-

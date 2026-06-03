@@ -29,10 +29,10 @@ export type AmazonPageResult = {
 export type RunRecord = {
   id: string;
   createdAt: string;
+  updatedAt?: string;
   status: RunStatus;
   keywords: string[];
   discoveredUrls: string[];
   results: AmazonPageResult[];
   message?: string;
 };
-
