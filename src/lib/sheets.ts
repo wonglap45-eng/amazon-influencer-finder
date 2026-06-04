@@ -13,6 +13,7 @@ type SheetsVerifyFailure = {
   ok: false;
   missing: string[];
   error?: string;
+  availableTabs?: string[];
 };
 
 export type SheetsVerifyResult = SheetsVerifySuccess | SheetsVerifyFailure;
@@ -89,12 +90,36 @@ export async function verifySheetsConnection(): Promise<SheetsVerifyResult> {
     fields: "spreadsheetId,properties.title,sheets.properties.title",
   });
 
+  const availableTabs =
+    metadata.data.sheets
+      ?.map((sheet) => sheet.properties?.title)
+      .filter((title): title is string => Boolean(title)) ?? [];
+
+  if (availableTabs.length === 0) {
+    return {
+      ok: false as const,
+      missing: [],
+      availableTabs: [],
+      error:
+        "Could not read worksheet tabs from the spreadsheet metadata. Double-check the Sheet ID and sharing permissions.",
+    };
+  }
+
   const tabName = env.googleSheetTabName || "results";
+  if (!availableTabs.includes(tabName)) {
+    return {
+      ok: false as const,
+      missing: [],
+      availableTabs,
+      error: `Worksheet tab "${tabName}" was not found. Available tabs: ${availableTabs.join(", ")}.`,
+    };
+  }
+
   const timestamp = new Date().toISOString();
 
   const appendResult = await sheets.spreadsheets.values.append({
     spreadsheetId: env.googleSheetId,
-    range: `${tabName}!A:D`,
+    range: `'${tabName}'!A:D`,
     valueInputOption: "RAW",
     insertDataOption: "INSERT_ROWS",
     requestBody: {

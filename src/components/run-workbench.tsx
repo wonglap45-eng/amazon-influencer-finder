@@ -145,7 +145,9 @@ export function RunWorkbench() {
         setSheetCheckMessage(
           data.missing?.length
             ? `Missing: ${data.missing.join(", ")}`
-            : data.error ?? "Sheets verification failed.",
+            : data.availableTabs?.length
+              ? `${data.error ?? "Sheets verification failed."} Tabs: ${data.availableTabs.join(", ")}.`
+              : data.error ?? "Sheets verification failed.",
         );
         return;
       }
