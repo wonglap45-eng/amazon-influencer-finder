@@ -23,7 +23,7 @@ export async function POST() {
       return Response.json(
         {
           ok: false,
-          error: "missing_env",
+          error: result.error ?? "missing_env",
           missing: result.missing,
         },
         { status: 400 },

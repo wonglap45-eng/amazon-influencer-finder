@@ -1,9 +1,53 @@
 import { google } from "googleapis";
 import { getEnv, getMissingEnvKeys } from "./config/env";
 
+type SheetsVerifySuccess = {
+  ok: true;
+  spreadsheetTitle: string | null;
+  spreadsheetId: string;
+  tabName: string;
+  updatedRange: string | null;
+};
+
+type SheetsVerifyFailure = {
+  ok: false;
+  missing: string[];
+  error?: string;
+};
+
+export type SheetsVerifyResult = SheetsVerifySuccess | SheetsVerifyFailure;
+
+function normalizePrivateKey(raw: string) {
+  const trimmed = raw.trim();
+
+  if (!trimmed) return "";
+
+  if (trimmed.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(trimmed) as { private_key?: unknown };
+      if (typeof parsed.private_key === "string") {
+        return normalizePrivateKey(parsed.private_key);
+      }
+    } catch {
+      // Fall through to text normalization below.
+    }
+  }
+
+  const unwrapped =
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+      ? trimmed.slice(1, -1)
+      : trimmed;
+
+  return unwrapped
+    .replace(/\r\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .trim();
+}
+
 function getPrivateKey() {
   const { googlePrivateKey } = getEnv();
-  return googlePrivateKey.replace(/\\n/g, "\n");
+  return normalizePrivateKey(googlePrivateKey);
 }
 
 export function getSheetsClient() {
@@ -18,7 +62,7 @@ export function getSheetsClient() {
   return google.sheets({ version: "v4", auth });
 }
 
-export async function verifySheetsConnection() {
+export async function verifySheetsConnection(): Promise<SheetsVerifyResult> {
   const env = getEnv();
   const missing = getMissingEnvKeys().filter((key) =>
     ["GOOGLE_SHEET_ID", "GOOGLE_SERVICE_ACCOUNT_EMAIL", "GOOGLE_PRIVATE_KEY"].includes(key),
@@ -29,6 +73,16 @@ export async function verifySheetsConnection() {
   }
 
   const sheets = getSheetsClient();
+  const privateKey = getPrivateKey();
+
+  if (!privateKey.includes("BEGIN PRIVATE KEY")) {
+    return {
+      ok: false as const,
+      missing: [],
+      error:
+        "GOOGLE_PRIVATE_KEY does not look like a valid PEM private key. Paste the private_key field from the service account JSON.",
+    };
+  }
 
   const metadata = await sheets.spreadsheets.get({
     spreadsheetId: env.googleSheetId,
