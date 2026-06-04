@@ -19,7 +19,7 @@ export async function POST(_: Request, { params }: Params) {
   try {
     await updateRun(id, {
       status: "running",
-      message: "Discovering Amazon storefronts with SerpAPI...",
+      message: "正在使用 SerpAPI 发现 Amazon 店铺页面...",
     });
 
     const { discovered, uniqueUrls } = await discoverAmazonShopUrlsForKeywords(run.keywords);
@@ -34,8 +34,8 @@ export async function POST(_: Request, { params }: Params) {
 
     const message =
       uniqueUrls.length > 0
-        ? `Discovered ${uniqueUrls.length} Amazon storefront candidate${uniqueUrls.length === 1 ? "" : "s"}.`
-        : "No Amazon storefront pages were found from the current keyword set.";
+        ? `已发现 ${uniqueUrls.length} 个 Amazon 候选页面。`
+        : "当前关键词没有找到 Amazon 候选页面。";
 
     const nextRun = await setRunResults(id, results, "running", message);
     const refreshedRun = nextRun ?? (await getRun(id));

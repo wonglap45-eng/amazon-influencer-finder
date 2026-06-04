@@ -76,7 +76,7 @@ export function RunWorkbench() {
 
   useEffect(() => {
     void refreshRuns().catch(() => {
-      setMessage("Failed to load existing runs.");
+      setMessage("加载已有任务失败。");
     });
   }, [refreshRuns]);
 
@@ -106,7 +106,7 @@ export function RunWorkbench() {
     try {
       const keywords = parseKeywords(keywordsText);
       if (!keywords.length) {
-        setMessage("Enter at least one keyword.");
+        setMessage("请至少输入一个关键词。");
         return;
       }
 
@@ -118,15 +118,15 @@ export function RunWorkbench() {
 
       const data = (await response.json()) as { run?: RunRecord; error?: string };
       if (!response.ok || !data.run) {
-        setMessage(data.error ?? "Failed to create run.");
+        setMessage(data.error ?? "创建任务失败。");
         return;
       }
 
       setRuns((current) => [data.run!, ...current.filter((run) => run.id !== data.run!.id)]);
       setActiveRunId(data.run.id);
-      setMessage(`Run ${data.run.id.slice(0, 8)} created.`);
+      setMessage(`已创建任务 ${data.run.id.slice(0, 8)}。`);
     } catch {
-      setMessage("Something went wrong creating the run.");
+      setMessage("创建任务时出错。");
     } finally {
       setBusy(false);
     }
@@ -146,19 +146,19 @@ export function RunWorkbench() {
       if (!response.ok) {
         setSheetCheckMessage(
           data.missing?.length
-            ? `Missing: ${data.missing.join(", ")}`
+            ? `缺少变量：${data.missing.join(", ")}`
             : data.availableTabs?.length
-              ? `${data.error ?? "Sheets verification failed."} Tabs: ${data.availableTabs.join(", ")}.`
-              : data.error ?? "Sheets verification failed.",
+              ? `${data.error ?? "Google Sheets 验证失败。"} 可用标签：${data.availableTabs.join(", ")}。`
+              : data.error ?? "Google Sheets 验证失败。",
         );
         return;
       }
 
       setSheetCheckMessage(
-        `Connected. Wrote test row to ${data.tabName} in ${data.spreadsheetTitle ?? "sheet"}.`,
+        `连接成功。已向 ${data.spreadsheetTitle ?? "表格"} 的 ${data.tabName} 写入测试行。`,
       );
     } catch {
-      setSheetCheckMessage("Sheets verification request failed.");
+      setSheetCheckMessage("Google Sheets 验证请求失败。");
     } finally {
       setSheetCheckBusy(false);
     }
@@ -166,7 +166,7 @@ export function RunWorkbench() {
 
   async function handleDiscover() {
     if (!activeRunId) {
-      setDiscoverMessage("Create or select a run first.");
+      setDiscoverMessage("请先创建或选择一个任务。");
       return;
     }
 
@@ -186,18 +186,18 @@ export function RunWorkbench() {
       };
 
       if (!response.ok || !data.ok || !data.run) {
-        setDiscoverMessage(data.error ?? "Discovery failed.");
+        setDiscoverMessage(data.error ?? "发现流程失败。");
         return;
       }
 
       setRuns((current) => [data.run!, ...current.filter((run) => run.id !== data.run!.id)]);
       setDiscoverMessage(
         data.discoveredCount
-          ? `Discovered ${data.discoveredCount} Amazon storefront candidate${data.discoveredCount === 1 ? "" : "s"}.`
-          : "No Amazon storefront pages were found.",
+          ? `发现 ${data.discoveredCount} 个 Amazon 候选页面。`
+          : "没有找到 Amazon 候选页面。",
       );
     } catch {
-      setDiscoverMessage("Discovery request failed.");
+      setDiscoverMessage("发现请求失败。");
     } finally {
       setDiscoverBusy(false);
     }
@@ -211,19 +211,19 @@ export function RunWorkbench() {
       <div className="glass rounded-3xl p-6">
         <div className="flex flex-col gap-4 border-b border-white/10 pb-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h2 className="text-2xl font-semibold">Run workbench</h2>
+            <h2 className="text-2xl font-semibold">任务工作台</h2>
             <p className="mt-1 text-sm text-slate-400">
-              Create runs, verify Google Sheets, and discover Amazon storefront URLs with SerpAPI.
+              先创建任务，再用 SerpAPI 发现 Amazon 页面，后续会接入抓取和写表。
             </p>
           </div>
           <div className="text-sm text-slate-300">
-            {runs.length} stored run{runs.length === 1 ? "" : "s"}
+            当前共 {runs.length} 个任务{runs.length === 1 ? "" : "s"}
           </div>
         </div>
 
         <form className="mt-6 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]" onSubmit={handleSubmit}>
           <label className="flex flex-col gap-3">
-            <span className="text-sm font-medium text-slate-200">Keywords</span>
+            <span className="text-sm font-medium text-slate-200">关键词</span>
             <textarea
               value={keywordsText}
               onChange={(event) => setKeywordsText(event.target.value)}
@@ -232,26 +232,25 @@ export function RunWorkbench() {
               placeholder={"cleaning\nhome cleaning\npet supplies"}
             />
             <p className="text-xs text-slate-500">
-              One keyword per line or comma-separated. Duplicates are removed automatically.
+              支持每行一个关键词，也支持逗号分隔。重复项会自动去重。
             </p>
           </label>
 
           <div className="flex flex-col gap-4">
             <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <div className="text-sm font-medium text-slate-200">What happens next</div>
+              <div className="text-sm font-medium text-slate-200">接下来会做什么</div>
               <ul className="mt-3 space-y-2 text-sm text-slate-400">
-                <li>- create a run</li>
-                <li>- discover Amazon storefronts with SerpAPI</li>
-                <li>- persist the candidate URLs locally</li>
-                <li>- prepare the run for Playwright extraction</li>
+                <li>- 创建任务</li>
+                <li>- 用 SerpAPI 发现 Amazon 店铺页面</li>
+                <li>- 在本地保存候选 URL</li>
+                <li>- 为后续 Playwright 抓取做准备</li>
               </ul>
             </div>
 
             <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4">
-              <div className="text-sm font-medium text-emerald-100">Google Sheets check</div>
+              <div className="text-sm font-medium text-emerald-100">Google Sheets 检查</div>
               <p className="mt-2 text-sm text-emerald-50/80">
-                Use this to verify your Sheet ID, service account email, private key, and
-                write permissions.
+                用来验证 Sheet ID、服务账号邮箱、私钥和写入权限。
               </p>
               <button
                 type="button"
@@ -259,10 +258,10 @@ export function RunWorkbench() {
                 disabled={sheetCheckBusy}
                 className="mt-4 rounded-2xl bg-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {sheetCheckBusy ? "Checking..." : "Verify Google Sheets"}
+                {sheetCheckBusy ? "检查中..." : "验证 Google Sheets"}
               </button>
               <p className="mt-3 text-xs leading-5 text-emerald-50/80">
-                {sheetCheckMessage || "This will append one test row to your tab."}
+                {sheetCheckMessage || "点击后会向你的标签页写入一行测试数据。"}
               </p>
             </div>
 
@@ -271,7 +270,7 @@ export function RunWorkbench() {
               disabled={busy}
               className="rounded-2xl bg-sky-300 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-sky-200 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {busy ? "Creating run..." : "Create run"}
+              {busy ? "创建中..." : "创建任务"}
             </button>
 
             <button
@@ -280,12 +279,12 @@ export function RunWorkbench() {
               disabled={discoverBusy || !activeRunId}
               className="rounded-2xl border border-sky-300/30 bg-sky-300/10 px-5 py-3 text-sm font-semibold text-sky-100 transition hover:bg-sky-300/20 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {discoverBusy ? "Discovering..." : "Discover Amazon pages"}
+              {discoverBusy ? "发现中..." : "发现 Amazon 页面"}
             </button>
 
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
-              <div className="font-medium text-slate-100">Status</div>
-              <p className="mt-2">{message || "Ready."}</p>
+              <div className="font-medium text-slate-100">状态</div>
+              <p className="mt-2">{message || "就绪。"}</p>
               {discoverMessage ? <p className="mt-2 text-sky-100">{discoverMessage}</p> : null}
             </div>
           </div>
@@ -295,20 +294,20 @@ export function RunWorkbench() {
       <div className="mt-6 grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
         <div className="glass rounded-3xl p-6">
           <div className="flex items-center justify-between">
-            <h3 className="text-xl font-semibold">Recent runs</h3>
+            <h3 className="text-xl font-semibold">最近任务</h3>
             <button
               type="button"
               onClick={() => void refreshRuns()}
               className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300 transition hover:bg-white/10"
             >
-              Refresh
+              刷新
             </button>
           </div>
 
           <div className="mt-4 space-y-3">
             {runs.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 p-4 text-sm text-slate-500">
-                No runs yet. Create your first one above.
+                还没有任务，先在上面创建一个。
               </div>
             ) : (
               runs.map((run) => (
@@ -324,7 +323,7 @@ export function RunWorkbench() {
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="font-medium text-slate-100">
-                      {run.keywords.length} keyword{run.keywords.length === 1 ? "" : "s"}
+                      {run.keywords.length} 个关键词
                     </div>
                     <div className="rounded-full bg-white/5 px-2 py-0.5 font-mono text-[11px] text-slate-400">
                       {run.status}
@@ -352,25 +351,25 @@ export function RunWorkbench() {
         <div className="glass rounded-3xl p-6">
           {!activeRun ? (
             <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 p-8 text-center text-slate-500">
-              Select a run to see details.
+              选择一个任务即可查看详情。
             </div>
           ) : (
             <>
               <div className="flex flex-col gap-4 border-b border-white/10 pb-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                  <div className="text-sm text-slate-400">Active run</div>
+                  <div className="text-sm text-slate-400">当前任务</div>
                   <h3 className="mt-1 text-2xl font-semibold">
                     {activeRun.id.slice(0, 8)}
                   </h3>
                   <p className="mt-1 text-sm text-slate-500">
-                    Created {new Date(activeRun.createdAt).toLocaleString()}
+                    创建于 {new Date(activeRun.createdAt).toLocaleString()}
                   </p>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm">
-                  <div className="text-slate-400">Status</div>
+                  <div className="text-slate-400">状态</div>
                   <div className="mt-1 font-semibold text-sky-100">{activeRun.status}</div>
                   <div className="mt-1 text-xs text-slate-500">
-                    Updated {new Date(activeRun.updatedAt ?? activeRun.createdAt).toLocaleString()}
+                    更新于 {new Date(activeRun.updatedAt ?? activeRun.createdAt).toLocaleString()}
                   </div>
                 </div>
               </div>
@@ -389,10 +388,10 @@ export function RunWorkbench() {
               <div className="mt-5 grid gap-3 md:grid-cols-4">
                 {stats &&
                   ([
-                    ["OK", stats.ok],
-                    ["Blocked", stats.blocked],
-                    ["Error", stats.error],
-                    ["Pending", stats.pending],
+                    ["成功", stats.ok],
+                    ["阻断", stats.blocked],
+                    ["错误", stats.error],
+                    ["待处理", stats.pending],
                   ] as const).map(([label, value]) => (
                     <div key={label} className="rounded-2xl border border-white/10 bg-black/20 p-4">
                       <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
@@ -405,18 +404,17 @@ export function RunWorkbench() {
                 <table className="w-full border-collapse text-left text-sm">
                   <thead className="bg-white/5 text-slate-300">
                     <tr>
-                      <th className="px-4 py-3 font-medium">Amazon page</th>
-                      <th className="px-4 py-3 font-medium">State</th>
-                      <th className="px-4 py-3 font-medium">Social links</th>
-                      <th className="px-4 py-3 font-medium">Notes</th>
+                      <th className="px-4 py-3 font-medium">Amazon 页面</th>
+                      <th className="px-4 py-3 font-medium">状态</th>
+                      <th className="px-4 py-3 font-medium">社交链接</th>
+                      <th className="px-4 py-3 font-medium">备注</th>
                     </tr>
                   </thead>
                   <tbody>
                     {activeRun.results.length === 0 ? (
                       <tr>
                         <td className="px-4 py-6 text-slate-500" colSpan={4}>
-                          No extraction results yet. This is expected until the worker layer
-                          is added.
+                          还没有提取结果，这在接入 Playwright 之前是正常的。
                         </td>
                       </tr>
                     ) : (
@@ -440,7 +438,7 @@ export function RunWorkbench() {
                           </td>
                           <td className="px-4 py-4 align-top text-slate-300">
                             {result.socialLinks.length === 0 ? (
-                              <span className="text-slate-500">None</span>
+                              <span className="text-slate-500">无</span>
                             ) : (
                               <div className="flex flex-col gap-2">
                                 {result.socialLinks.map((item) => (

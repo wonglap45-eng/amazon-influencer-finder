@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "amazon-influencer-finder",
-  description: "Local Amazon influencer and storefront discovery workspace",
+  description: "本地 Amazon 达人页面发现与分析工作台",
 };
 
 export default function RootLayout({

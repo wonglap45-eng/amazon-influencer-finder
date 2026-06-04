@@ -23,7 +23,7 @@ export async function POST() {
       return Response.json(
         {
           ok: false,
-          error: result.error ?? "missing_env",
+          error: result.error ?? "缺少必要环境变量",
           missing: result.missing,
         },
         { status: 400 },
