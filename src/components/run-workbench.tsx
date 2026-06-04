@@ -51,6 +51,8 @@ export function RunWorkbench() {
   const [sheetCheckMessage, setSheetCheckMessage] = useState<string>("");
   const [discoverBusy, setDiscoverBusy] = useState(false);
   const [discoverMessage, setDiscoverMessage] = useState<string>("");
+  const [extractBusy, setExtractBusy] = useState(false);
+  const [extractMessage, setExtractMessage] = useState<string>("");
 
   const activeRun = useMemo(
     () => runs.find((run) => run.id === activeRunId) ?? null,
@@ -203,6 +205,53 @@ export function RunWorkbench() {
     }
   }
 
+  async function handleExtract() {
+    if (!activeRunId) {
+      setExtractMessage("请先创建或选择一个任务。");
+      return;
+    }
+
+    if (!activeRun?.results.length) {
+      setExtractMessage("当前任务还没有可提取的 Amazon 页面，请先点“发现 Amazon 达人主页”。");
+      return;
+    }
+
+    setExtractBusy(true);
+    setExtractMessage("");
+
+    try {
+      const response = await fetch(`/api/runs/${activeRunId}/extract`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const data = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        run?: RunRecord;
+      };
+
+      if (!response.ok || !data.ok) {
+        if (data.error === "extracting") {
+          setExtractMessage("当前任务已经在提取中，请稍等自动刷新。");
+        } else {
+          setExtractMessage(data.error ?? "提取社交链接失败。");
+        }
+        return;
+      }
+
+      if (data.run) {
+        setRuns((current) => [data.run!, ...current.filter((run) => run.id !== data.run!.id)]);
+      }
+
+      setExtractMessage("已开始提取公开社交链接，结果会自动刷新。");
+    } catch {
+      setExtractMessage("提取社交链接请求失败。");
+    } finally {
+      setExtractBusy(false);
+    }
+  }
+
   const stats = activeRun ? summaryForResults(activeRun.results) : null;
   const keywords = activeRun?.keywords ?? [];
 
@@ -282,10 +331,20 @@ export function RunWorkbench() {
               {discoverBusy ? "发现中..." : "发现 Amazon 达人主页"}
             </button>
 
+            <button
+              type="button"
+              onClick={() => void handleExtract()}
+              disabled={extractBusy || !activeRunId}
+              className="rounded-2xl border border-emerald-300/30 bg-emerald-300/10 px-5 py-3 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {extractBusy ? "提取中..." : "提取社交链接"}
+            </button>
+
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
               <div className="font-medium text-slate-100">状态</div>
               <p className="mt-2">{message || "就绪。"}</p>
               {discoverMessage ? <p className="mt-2 text-sky-100">{discoverMessage}</p> : null}
+              {extractMessage ? <p className="mt-2 text-emerald-100">{extractMessage}</p> : null}
             </div>
           </div>
         </form>
