@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "postinstall": "playwright install chromium",
+    "postinstall": "node scripts/install-playwright.mjs",
     "start": "next start",
     "lint": "eslint"
   },
