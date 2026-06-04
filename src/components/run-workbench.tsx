@@ -49,6 +49,8 @@ export function RunWorkbench() {
   const [message, setMessage] = useState<string>("");
   const [sheetCheckBusy, setSheetCheckBusy] = useState(false);
   const [sheetCheckMessage, setSheetCheckMessage] = useState<string>("");
+  const [discoverBusy, setDiscoverBusy] = useState(false);
+  const [discoverMessage, setDiscoverMessage] = useState<string>("");
 
   const activeRun = useMemo(
     () => runs.find((run) => run.id === activeRunId) ?? null,
@@ -162,6 +164,45 @@ export function RunWorkbench() {
     }
   }
 
+  async function handleDiscover() {
+    if (!activeRunId) {
+      setDiscoverMessage("Create or select a run first.");
+      return;
+    }
+
+    setDiscoverBusy(true);
+    setDiscoverMessage("");
+
+    try {
+      const response = await fetch(`/api/runs/${activeRunId}/discover`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        run?: RunRecord;
+        discoveredCount?: number;
+      };
+
+      if (!response.ok || !data.ok || !data.run) {
+        setDiscoverMessage(data.error ?? "Discovery failed.");
+        return;
+      }
+
+      setRuns((current) => [data.run!, ...current.filter((run) => run.id !== data.run!.id)]);
+      setDiscoverMessage(
+        data.discoveredCount
+          ? `Discovered ${data.discoveredCount} Amazon storefront candidate${data.discoveredCount === 1 ? "" : "s"}.`
+          : "No Amazon storefront pages were found.",
+      );
+    } catch {
+      setDiscoverMessage("Discovery request failed.");
+    } finally {
+      setDiscoverBusy(false);
+    }
+  }
+
   const stats = activeRun ? summaryForResults(activeRun.results) : null;
   const keywords = activeRun?.keywords ?? [];
 
@@ -172,8 +213,7 @@ export function RunWorkbench() {
           <div>
             <h2 className="text-2xl font-semibold">Run workbench</h2>
             <p className="mt-1 text-sm text-slate-400">
-              Submit keywords now. The actual search and extraction layers will be
-              plugged in next.
+              Create runs, verify Google Sheets, and discover Amazon storefront URLs with SerpAPI.
             </p>
           </div>
           <div className="text-sm text-slate-300">
@@ -197,43 +237,56 @@ export function RunWorkbench() {
           </label>
 
           <div className="flex flex-col gap-4">
-          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-            <div className="text-sm font-medium text-slate-200">What happens next</div>
-            <ul className="mt-3 space-y-2 text-sm text-slate-400">
-              <li>- create a run</li>
-              <li>- persist it locally</li>
-              <li>- show it in the dashboard</li>
-              <li>- keep the UI ready for worker updates</li>
-            </ul>
-          </div>
-          <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4">
-            <div className="text-sm font-medium text-emerald-100">Google Sheets check</div>
-            <p className="mt-2 text-sm text-emerald-50/80">
-              Use this to verify your Sheet ID, service account email, private key, and
-              write permissions.
-            </p>
+            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <div className="text-sm font-medium text-slate-200">What happens next</div>
+              <ul className="mt-3 space-y-2 text-sm text-slate-400">
+                <li>- create a run</li>
+                <li>- discover Amazon storefronts with SerpAPI</li>
+                <li>- persist the candidate URLs locally</li>
+                <li>- prepare the run for Playwright extraction</li>
+              </ul>
+            </div>
+
+            <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4">
+              <div className="text-sm font-medium text-emerald-100">Google Sheets check</div>
+              <p className="mt-2 text-sm text-emerald-50/80">
+                Use this to verify your Sheet ID, service account email, private key, and
+                write permissions.
+              </p>
+              <button
+                type="button"
+                onClick={() => void handleSheetCheck()}
+                disabled={sheetCheckBusy}
+                className="mt-4 rounded-2xl bg-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {sheetCheckBusy ? "Checking..." : "Verify Google Sheets"}
+              </button>
+              <p className="mt-3 text-xs leading-5 text-emerald-50/80">
+                {sheetCheckMessage || "This will append one test row to your tab."}
+              </p>
+            </div>
+
             <button
-              type="button"
-              onClick={() => void handleSheetCheck()}
-              disabled={sheetCheckBusy}
-              className="mt-4 rounded-2xl bg-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {sheetCheckBusy ? "Checking..." : "Verify Google Sheets"}
-            </button>
-            <p className="mt-3 text-xs leading-5 text-emerald-50/80">
-              {sheetCheckMessage || "This will append one test row to your tab."}
-            </p>
-          </div>
-          <button
-            type="submit"
-            disabled={busy}
+              type="submit"
+              disabled={busy}
               className="rounded-2xl bg-sky-300 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-sky-200 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {busy ? "Creating run..." : "Create run"}
             </button>
+
+            <button
+              type="button"
+              onClick={() => void handleDiscover()}
+              disabled={discoverBusy || !activeRunId}
+              className="rounded-2xl border border-sky-300/30 bg-sky-300/10 px-5 py-3 text-sm font-semibold text-sky-100 transition hover:bg-sky-300/20 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {discoverBusy ? "Discovering..." : "Discover Amazon pages"}
+            </button>
+
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
               <div className="font-medium text-slate-100">Status</div>
               <p className="mt-2">{message || "Ready."}</p>
+              {discoverMessage ? <p className="mt-2 text-sky-100">{discoverMessage}</p> : null}
             </div>
           </div>
         </form>
@@ -317,8 +370,7 @@ export function RunWorkbench() {
                   <div className="text-slate-400">Status</div>
                   <div className="mt-1 font-semibold text-sky-100">{activeRun.status}</div>
                   <div className="mt-1 text-xs text-slate-500">
-                    Updated{" "}
-                    {new Date(activeRun.updatedAt ?? activeRun.createdAt).toLocaleString()}
+                    Updated {new Date(activeRun.updatedAt ?? activeRun.createdAt).toLocaleString()}
                   </div>
                 </div>
               </div>
