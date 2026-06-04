@@ -39,6 +39,12 @@ function summaryForResults(results: AmazonPageResult[]) {
   return summary;
 }
 
+function platformCountForLinks(links: AmazonPageResult["socialLinks"]) {
+  return new Set(
+    links.map((item) => item.platform ?? item.type ?? item.host ?? "website"),
+  ).size;
+}
+
 export function RunWorkbench() {
   const [keywordsText, setKeywordsText] = useState(
     ["cleaning", "home cleaning", "pet supplies", "bathroom cleaning", "kitchen gadgets"].join("\n"),
@@ -466,13 +472,14 @@ export function RunWorkbench() {
                       <th className="px-4 py-3 font-medium">达人主页</th>
                       <th className="px-4 py-3 font-medium">状态</th>
                       <th className="px-4 py-3 font-medium">社交链接</th>
+                      <th className="px-4 py-3 font-medium">平台数</th>
                       <th className="px-4 py-3 font-medium">备注</th>
                     </tr>
                   </thead>
                   <tbody>
                     {activeRun.results.length === 0 ? (
                       <tr>
-                        <td className="px-4 py-6 text-slate-500" colSpan={4}>
+                        <td className="px-4 py-6 text-slate-500" colSpan={5}>
                           还没有提取结果，这在接入 Playwright 之前是正常的。
                         </td>
                       </tr>
@@ -513,6 +520,11 @@ export function RunWorkbench() {
                                 ))}
                               </div>
                             )}
+                          </td>
+                          <td className="px-4 py-4 align-top text-slate-300">
+                            <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-200">
+                              {platformCountForLinks(result.socialLinks)} 个
+                            </span>
                           </td>
                           <td className="px-4 py-4 align-top text-slate-400">
                             {result.note || "—"}

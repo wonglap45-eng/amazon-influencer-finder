@@ -7,6 +7,7 @@ type CandidateLink = {
   title?: string;
   alt?: string;
   className?: string;
+  containerClassName?: string;
 };
 
 type ClassifiedLink = SocialLink & {
@@ -23,26 +24,38 @@ function hostnameFor(value: string) {
   return value.toLowerCase().replace(/^www\./, "");
 }
 
+function hostMatchesDomain(host: string, domain: string) {
+  return host === domain || host.endsWith(`.${domain}`);
+}
+
 function platformLabelFromHost(host: string) {
-  if (host.includes("instagram.com") || host.includes("instagr.am")) return "Instagram";
-  if (host.includes("tiktok.com")) return "TikTok";
-  if (host.includes("youtube.com") || host === "youtu.be") return "YouTube";
-  if (host.includes("facebook.com") || host === "fb.me" || host === "fb.watch") return "Facebook";
-  if (host.includes("linktr.ee") || host.includes("linktree")) return "Linktree";
-  if (host.includes("x.com") || host.includes("twitter.com") || host === "t.co") return "X";
-  if (host.includes("threads.net")) return "Threads";
-  if (host.includes("pinterest.")) return "Pinterest";
-  if (host.includes("snapchat.com")) return "Snapchat";
-  if (host.includes("twitch.tv")) return "Twitch";
-  if (host.includes("reddit.com")) return "Reddit";
-  if (host.includes("beacons.ai") || host.includes("beacons.page")) return "Beacons";
-  if (host.includes("solo.to")) return "Solo.to";
-  if (host.includes("bio.site")) return "Bio.site";
-  if (host.includes("lnk.bio")) return "Lnk.Bio";
-  if (host.includes("taplink.cc")) return "Taplink";
-  if (host.includes("link.bio")) return "Link.bio";
-  if (host.includes("heylink.me")) return "HeyLink";
-  if (host.includes("carrd.co")) return "Carrd";
+  if (hostMatchesDomain(host, "instagram.com") || host.includes("instagr.am")) return "Instagram";
+  if (hostMatchesDomain(host, "tiktok.com")) return "TikTok";
+  if (hostMatchesDomain(host, "youtube.com") || host === "youtu.be") return "YouTube";
+  if (hostMatchesDomain(host, "facebook.com") || host === "fb.me" || host === "fb.watch") {
+    return "Facebook";
+  }
+  if (hostMatchesDomain(host, "linktr.ee") || hostMatchesDomain(host, "linktree")) return "Linktree";
+  if (hostMatchesDomain(host, "x.com") || hostMatchesDomain(host, "twitter.com") || host === "t.co") {
+    return "X";
+  }
+  if (hostMatchesDomain(host, "threads.net")) return "Threads";
+  if (hostMatchesDomain(host, "pinterest.com") || hostMatchesDomain(host, "pinterest.co")) {
+    return "Pinterest";
+  }
+  if (hostMatchesDomain(host, "snapchat.com")) return "Snapchat";
+  if (hostMatchesDomain(host, "twitch.tv")) return "Twitch";
+  if (hostMatchesDomain(host, "reddit.com")) return "Reddit";
+  if (hostMatchesDomain(host, "beacons.ai") || hostMatchesDomain(host, "beacons.page")) {
+    return "Beacons";
+  }
+  if (hostMatchesDomain(host, "solo.to")) return "Solo.to";
+  if (hostMatchesDomain(host, "bio.site")) return "Bio.site";
+  if (hostMatchesDomain(host, "lnk.bio")) return "Lnk.Bio";
+  if (hostMatchesDomain(host, "taplink.cc")) return "Taplink";
+  if (hostMatchesDomain(host, "link.bio")) return "Link.bio";
+  if (hostMatchesDomain(host, "heylink.me")) return "HeyLink";
+  if (hostMatchesDomain(host, "carrd.co")) return "Carrd";
   return host.replace(/^www\./, "");
 }
 
@@ -54,6 +67,31 @@ function isAmazonHost(host: string) {
     host.endsWith(".amazonaws.com") ||
     host === "amzn.to"
   );
+}
+
+function isLikelySocialCandidate(candidate: CandidateLink, host: string) {
+  const blob = [
+    candidate.text ?? "",
+    candidate.ariaLabel ?? "",
+    candidate.title ?? "",
+    candidate.alt ?? "",
+    candidate.className ?? "",
+    candidate.containerClassName ?? "",
+    host,
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  if (blob.includes("social-media") || blob.includes("social icon")) return true;
+  if (blob.includes("instagram")) return true;
+  if (blob.includes("tiktok")) return true;
+  if (blob.includes("youtube")) return true;
+  if (blob.includes("facebook")) return true;
+  if (blob.includes("linktree") || blob.includes("linktr.ee")) return true;
+  if (blob.includes("website")) return true;
+  if (blob.includes("link bio") || blob.includes("bio")) return true;
+
+  return false;
 }
 
 function classifyLink(url: URL, candidate: CandidateLink): SocialLinkType {
@@ -105,9 +143,38 @@ export function extractPublicSocialLinks(
       continue;
     }
 
-    const type = classifyLink(url, candidate);
     const normalized = normalizeUrl(url.toString());
     const key = normalized;
+    const socialHost =
+      hostMatchesDomain(url.hostname.toLowerCase(), "instagram.com") ||
+      hostMatchesDomain(url.hostname.toLowerCase(), "tiktok.com") ||
+      hostMatchesDomain(url.hostname.toLowerCase(), "youtube.com") ||
+      hostMatchesDomain(url.hostname.toLowerCase(), "facebook.com") ||
+      hostMatchesDomain(url.hostname.toLowerCase(), "linktr.ee") ||
+      hostMatchesDomain(url.hostname.toLowerCase(), "linktree") ||
+      hostMatchesDomain(url.hostname.toLowerCase(), "x.com") ||
+      hostMatchesDomain(url.hostname.toLowerCase(), "twitter.com") ||
+      hostMatchesDomain(url.hostname.toLowerCase(), "threads.net") ||
+      hostMatchesDomain(url.hostname.toLowerCase(), "pinterest.com") ||
+      hostMatchesDomain(url.hostname.toLowerCase(), "pinterest.co") ||
+      hostMatchesDomain(url.hostname.toLowerCase(), "snapchat.com") ||
+      hostMatchesDomain(url.hostname.toLowerCase(), "twitch.tv") ||
+      hostMatchesDomain(url.hostname.toLowerCase(), "reddit.com") ||
+      hostMatchesDomain(url.hostname.toLowerCase(), "beacons.ai") ||
+      hostMatchesDomain(url.hostname.toLowerCase(), "beacons.page") ||
+      hostMatchesDomain(url.hostname.toLowerCase(), "solo.to") ||
+      hostMatchesDomain(url.hostname.toLowerCase(), "bio.site") ||
+      hostMatchesDomain(url.hostname.toLowerCase(), "lnk.bio") ||
+      hostMatchesDomain(url.hostname.toLowerCase(), "taplink.cc") ||
+      hostMatchesDomain(url.hostname.toLowerCase(), "link.bio") ||
+      hostMatchesDomain(url.hostname.toLowerCase(), "heylink.me") ||
+      hostMatchesDomain(url.hostname.toLowerCase(), "carrd.co");
+
+    if (!socialHost && !isLikelySocialCandidate(candidate, host)) {
+      continue;
+    }
+
+    const type = classifyLink(url, candidate);
 
     if (!unique.has(key)) {
       unique.set(key, {
@@ -167,6 +234,13 @@ export function collectCandidateLinksFromDom() {
             ? anchor.className
             : "";
 
+      const containerClassName =
+        typeof anchor?.parentElement?.className === "string"
+          ? anchor.parentElement.className
+          : typeof element.parentElement?.className === "string"
+            ? element.parentElement.className
+            : "";
+
       const ariaLabel =
         element.getAttribute("aria-label") ??
         anchor?.getAttribute("aria-label") ??
@@ -191,6 +265,7 @@ export function collectCandidateLinksFromDom() {
         title,
         alt,
         className,
+        containerClassName,
       };
     })
     .filter((candidate) => Boolean(candidate.href));
