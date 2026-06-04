@@ -23,6 +23,29 @@ function hostnameFor(value: string) {
   return value.toLowerCase().replace(/^www\./, "");
 }
 
+function platformLabelFromHost(host: string) {
+  if (host.includes("instagram.com") || host.includes("instagr.am")) return "Instagram";
+  if (host.includes("tiktok.com")) return "TikTok";
+  if (host.includes("youtube.com") || host === "youtu.be") return "YouTube";
+  if (host.includes("facebook.com") || host === "fb.me" || host === "fb.watch") return "Facebook";
+  if (host.includes("linktr.ee") || host.includes("linktree")) return "Linktree";
+  if (host.includes("x.com") || host.includes("twitter.com") || host === "t.co") return "X";
+  if (host.includes("threads.net")) return "Threads";
+  if (host.includes("pinterest.")) return "Pinterest";
+  if (host.includes("snapchat.com")) return "Snapchat";
+  if (host.includes("twitch.tv")) return "Twitch";
+  if (host.includes("reddit.com")) return "Reddit";
+  if (host.includes("beacons.ai") || host.includes("beacons.page")) return "Beacons";
+  if (host.includes("solo.to")) return "Solo.to";
+  if (host.includes("bio.site")) return "Bio.site";
+  if (host.includes("lnk.bio")) return "Lnk.Bio";
+  if (host.includes("taplink.cc")) return "Taplink";
+  if (host.includes("link.bio")) return "Link.bio";
+  if (host.includes("heylink.me")) return "HeyLink";
+  if (host.includes("carrd.co")) return "Carrd";
+  return host.replace(/^www\./, "");
+}
+
 function isAmazonHost(host: string) {
   return (
     host === "amazon.com" ||
@@ -84,12 +107,14 @@ export function extractPublicSocialLinks(
 
     const type = classifyLink(url, candidate);
     const normalized = normalizeUrl(url.toString());
-    const key = `${type}:${normalized}`;
+    const key = normalized;
 
     if (!unique.has(key)) {
       unique.set(key, {
         type,
         url: normalized,
+        platform: platformLabelFromHost(host),
+        host,
         key,
       });
     }
@@ -98,6 +123,8 @@ export function extractPublicSocialLinks(
   return Array.from(unique.values()).map((item) => ({
     type: item.type,
     url: item.url,
+    platform: item.platform,
+    host: item.host,
   }));
 }
 

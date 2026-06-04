@@ -502,13 +502,13 @@ export function RunWorkbench() {
                               <div className="flex flex-col gap-2">
                                 {result.socialLinks.map((item) => (
                                   <a
-                                    key={`${result.url}-${item.type}-${item.url}`}
+                                    key={`${result.url}-${item.url}`}
                                     href={item.url}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="text-sky-200 hover:underline"
                                   >
-                                    {item.type}
+                                    {item.platform ?? item.type}
                                   </a>
                                 ))}
                               </div>

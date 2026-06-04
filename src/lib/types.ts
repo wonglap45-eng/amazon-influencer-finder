@@ -14,6 +14,8 @@ export type SocialLinkType =
 export type SocialLink = {
   type: SocialLinkType;
   url: string;
+  platform?: string;
+  host?: string;
 };
 
 export type AmazonPageResult = {
