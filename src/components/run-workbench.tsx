@@ -47,6 +47,8 @@ export function RunWorkbench() {
   const [activeRunId, setActiveRunId] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string>("");
+  const [sheetCheckBusy, setSheetCheckBusy] = useState(false);
+  const [sheetCheckMessage, setSheetCheckMessage] = useState<string>("");
 
   const activeRun = useMemo(
     () => runs.find((run) => run.id === activeRunId) ?? null,
@@ -128,6 +130,36 @@ export function RunWorkbench() {
     }
   }
 
+  async function handleSheetCheck() {
+    setSheetCheckBusy(true);
+    setSheetCheckMessage("");
+
+    try {
+      const response = await fetch("/api/verify/sheets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        setSheetCheckMessage(
+          data.missing?.length
+            ? `Missing: ${data.missing.join(", ")}`
+            : data.error ?? "Sheets verification failed.",
+        );
+        return;
+      }
+
+      setSheetCheckMessage(
+        `Connected. Wrote test row to ${data.tabName} in ${data.spreadsheetTitle ?? "sheet"}.`,
+      );
+    } catch {
+      setSheetCheckMessage("Sheets verification request failed.");
+    } finally {
+      setSheetCheckBusy(false);
+    }
+  }
+
   const stats = activeRun ? summaryForResults(activeRun.results) : null;
   const keywords = activeRun?.keywords ?? [];
 
@@ -163,18 +195,36 @@ export function RunWorkbench() {
           </label>
 
           <div className="flex flex-col gap-4">
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <div className="text-sm font-medium text-slate-200">What happens next</div>
-              <ul className="mt-3 space-y-2 text-sm text-slate-400">
-                <li>- create a run</li>
-                <li>- persist it locally</li>
-                <li>- show it in the dashboard</li>
-                <li>- keep the UI ready for worker updates</li>
-              </ul>
-            </div>
+          <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+            <div className="text-sm font-medium text-slate-200">What happens next</div>
+            <ul className="mt-3 space-y-2 text-sm text-slate-400">
+              <li>- create a run</li>
+              <li>- persist it locally</li>
+              <li>- show it in the dashboard</li>
+              <li>- keep the UI ready for worker updates</li>
+            </ul>
+          </div>
+          <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4">
+            <div className="text-sm font-medium text-emerald-100">Google Sheets check</div>
+            <p className="mt-2 text-sm text-emerald-50/80">
+              Use this to verify your Sheet ID, service account email, private key, and
+              write permissions.
+            </p>
             <button
-              type="submit"
-              disabled={busy}
+              type="button"
+              onClick={() => void handleSheetCheck()}
+              disabled={sheetCheckBusy}
+              className="mt-4 rounded-2xl bg-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-950 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {sheetCheckBusy ? "Checking..." : "Verify Google Sheets"}
+            </button>
+            <p className="mt-3 text-xs leading-5 text-emerald-50/80">
+              {sheetCheckMessage || "This will append one test row to your tab."}
+            </p>
+          </div>
+          <button
+            type="submit"
+            disabled={busy}
               className="rounded-2xl bg-sky-300 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-sky-200 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {busy ? "Creating run..." : "Create run"}
