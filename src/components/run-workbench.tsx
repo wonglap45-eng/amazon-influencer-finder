@@ -465,6 +465,13 @@ export function RunWorkbench() {
                   ))}
               </div>
 
+              {activeRun.message ? (
+                <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
+                  <div className="text-xs uppercase tracking-wide text-slate-500">后端消息</div>
+                  <p className="mt-2 break-words">{activeRun.message}</p>
+                </div>
+              ) : null}
+
               <div className="mt-6 overflow-hidden rounded-2xl border border-white/10">
                 <table className="w-full border-collapse text-left text-sm">
                   <thead className="bg-white/5 text-slate-300">
