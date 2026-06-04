@@ -22,6 +22,14 @@ export type SheetsVerifyResult = SheetsVerifySuccess | SheetsVerifyFailure;
 type SheetCell = string | number | boolean | null;
 type SheetRow = SheetCell[];
 
+type SocialColumnBuckets = {
+  facebook: string[];
+  tiktok: string[];
+  instagram: string[];
+  youtube: string[];
+  other: string[];
+};
+
 function normalizePrivateKey(raw: string) {
   const trimmed = raw.trim();
 
@@ -54,39 +62,108 @@ function quoteSheetTabName(tabName: string) {
   return `'${tabName.replace(/'/g, "''")}'`;
 }
 
-function uniquePlatforms(result: AmazonPageResult) {
-  return Array.from(
-    new Set(
-      result.socialLinks
-        .map((link) => (link.platform ?? link.type ?? "").trim())
-        .filter(Boolean),
-    ),
-  );
+function normalizeDisplayText(value: string) {
+  return value.trim().replace(/\s+/g, " ");
 }
 
-function socialLinksToCell(result: AmazonPageResult) {
-  return result.socialLinks
-    .map((link) => `${link.platform ?? link.type}: ${link.url}`)
-    .join("\n");
+function slugToDisplayName(slug: string) {
+  return slug
+    .replace(/[-_.]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractCreatorName(result: AmazonPageResult) {
+  const title = normalizeDisplayText(result.title ?? "");
+  const amazonPageMatch = title.match(/^(.*?)(?:'s)? Amazon Page$/i);
+
+  if (amazonPageMatch?.[1]) {
+    return amazonPageMatch[1].trim();
+  }
+
+  const brandMatch = title.match(/^(.+?)(?:\s*\|\s*.+)?$/);
+  if (brandMatch?.[1]) {
+    return brandMatch[1].trim();
+  }
+
+  try {
+    const url = new URL(result.url);
+    const slug = url.pathname.split("/").filter(Boolean).at(-1) ?? "";
+    if (slug) {
+      return slugToDisplayName(slug);
+    }
+  } catch {
+    // Fallback below.
+  }
+
+  return title || result.keyword;
+}
+
+function bucketSocialLinks(result: AmazonPageResult): SocialColumnBuckets {
+  const buckets: SocialColumnBuckets = {
+    facebook: [],
+    tiktok: [],
+    instagram: [],
+    youtube: [],
+    other: [],
+  };
+
+  for (const link of result.socialLinks) {
+    const platform = (link.platform ?? link.type ?? "").toLowerCase();
+    const value = normalizeDisplayText(link.url);
+
+    if (!value) continue;
+
+    if (platform.includes("facebook")) {
+      buckets.facebook.push(value);
+      continue;
+    }
+
+    if (platform.includes("tiktok")) {
+      buckets.tiktok.push(value);
+      continue;
+    }
+
+    if (platform.includes("instagram")) {
+      buckets.instagram.push(value);
+      continue;
+    }
+
+    if (platform.includes("youtube")) {
+      buckets.youtube.push(value);
+      continue;
+    }
+
+    buckets.other.push(value);
+  }
+
+  return buckets;
+}
+
+function joinCell(values: string[]) {
+  return values.length > 0 ? values.join("\n") : "";
 }
 
 function buildAmazonResultRows(
-  runId: string,
   results: AmazonPageResult[],
   syncedAt = new Date().toISOString(),
 ): SheetRow[] {
   return results.map((result) => [
-    syncedAt,
-    runId,
-    result.keyword,
+    ...(() => {
+      const buckets = bucketSocialLinks(result);
+      return [
+        extractCreatorName(result),
+        joinCell(buckets.facebook),
+        joinCell(buckets.tiktok),
+        joinCell(buckets.instagram),
+        joinCell(buckets.youtube),
+        joinCell(buckets.other),
+      ];
+    })(),
     result.url,
-    result.title ?? "",
-    result.state,
-    result.blockedReason ?? "",
-    result.socialLinks.length,
-    uniquePlatforms(result).join("\n"),
-    socialLinksToCell(result),
     result.note ?? "",
+    syncedAt,
+    result.keyword,
   ]);
 }
 
@@ -199,11 +276,11 @@ export async function appendAmazonResultsToSheet(
 
   const sheets = getSheetsClient();
   const tabName = env.googleSheetTabName || "results";
-  const rows = buildAmazonResultRows(runId, results);
+  const rows = buildAmazonResultRows(results);
 
   const appendResult = await sheets.spreadsheets.values.append({
     spreadsheetId: env.googleSheetId,
-    range: `${quoteSheetTabName(tabName)}!A:K`,
+    range: `${quoteSheetTabName(tabName)}!A:J`,
     valueInputOption: "RAW",
     insertDataOption: "INSERT_ROWS",
     requestBody: {
