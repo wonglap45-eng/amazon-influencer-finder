@@ -1,6 +1,10 @@
 import { spawnSync } from "node:child_process";
 import { platform } from "node:process";
 
+if (process.env.PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD === "1") {
+  process.exit(0);
+}
+
 const installArgs =
   platform === "linux"
     ? ["playwright", "install", "--with-deps", "chromium"]

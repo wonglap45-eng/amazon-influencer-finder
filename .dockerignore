@@ -1,0 +1,8 @@
+node_modules
+.next
+data/jobs.json
+dev-3007.log
+local-home.png
+.git
+.env.local
+.env
