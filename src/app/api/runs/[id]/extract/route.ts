@@ -20,10 +20,7 @@ export async function POST(_: Request, { params }: Params) {
   }
 
   if (activeExtractionJobs.has(id) || isExtractionInProgress(run.message)) {
-    return Response.json(
-      { ok: false, error: "extracting" },
-      { status: 409 },
-    );
+    return Response.json({ ok: false, error: "extracting" }, { status: 409 });
   }
 
   activeExtractionJobs.add(id);

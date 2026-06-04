@@ -32,12 +32,17 @@ export async function POST(_: Request, { params }: Params) {
       note: "已归一化为达人主页，等待 Playwright 提取。",
     }));
 
+    const discoveredUrls = uniqueUrls.map((item) => item.url);
     const message =
       uniqueUrls.length > 0
         ? `已发现 ${uniqueUrls.length} 个 Amazon 达人主页候选。`
         : "当前关键词没有找到 Amazon 达人主页候选。";
 
     const nextRun = await setRunResults(id, results, "running", message);
+    await updateRun(id, {
+      discoveredUrls,
+    });
+
     const refreshedRun = nextRun ?? (await getRun(id));
 
     return Response.json({

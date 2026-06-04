@@ -1,5 +1,6 @@
 import { google } from "googleapis";
 import { getEnv, getMissingEnvKeys } from "./config/env";
+import type { AmazonPageResult } from "./types";
 
 type SheetsVerifySuccess = {
   ok: true;
@@ -17,6 +18,9 @@ type SheetsVerifyFailure = {
 };
 
 export type SheetsVerifyResult = SheetsVerifySuccess | SheetsVerifyFailure;
+
+type SheetCell = string | number | boolean | null;
+type SheetRow = SheetCell[];
 
 function normalizePrivateKey(raw: string) {
   const trimmed = raw.trim();
@@ -44,6 +48,46 @@ function normalizePrivateKey(raw: string) {
     .replace(/\r\n/g, "\n")
     .replace(/\\n/g, "\n")
     .trim();
+}
+
+function quoteSheetTabName(tabName: string) {
+  return `'${tabName.replace(/'/g, "''")}'`;
+}
+
+function uniquePlatforms(result: AmazonPageResult) {
+  return Array.from(
+    new Set(
+      result.socialLinks
+        .map((link) => (link.platform ?? link.type ?? "").trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function socialLinksToCell(result: AmazonPageResult) {
+  return result.socialLinks
+    .map((link) => `${link.platform ?? link.type}: ${link.url}`)
+    .join("\n");
+}
+
+function buildAmazonResultRows(
+  runId: string,
+  results: AmazonPageResult[],
+  syncedAt = new Date().toISOString(),
+): SheetRow[] {
+  return results.map((result) => [
+    syncedAt,
+    runId,
+    result.keyword,
+    result.url,
+    result.title ?? "",
+    result.state,
+    result.blockedReason ?? "",
+    result.socialLinks.length,
+    uniquePlatforms(result).join("\n"),
+    socialLinksToCell(result),
+    result.note ?? "",
+  ]);
 }
 
 function getPrivateKey() {
@@ -119,7 +163,7 @@ export async function verifySheetsConnection(): Promise<SheetsVerifyResult> {
 
   const appendResult = await sheets.spreadsheets.values.append({
     spreadsheetId: env.googleSheetId,
-    range: `'${tabName}'!A:D`,
+    range: `${quoteSheetTabName(tabName)}!A:D`,
     valueInputOption: "RAW",
     insertDataOption: "INSERT_ROWS",
     requestBody: {
@@ -133,5 +177,43 @@ export async function verifySheetsConnection(): Promise<SheetsVerifyResult> {
     spreadsheetId: metadata.data.spreadsheetId ?? env.googleSheetId,
     tabName,
     updatedRange: appendResult.data.updates?.updatedRange ?? null,
+  };
+}
+
+export async function appendAmazonResultsToSheet(
+  runId: string,
+  results: AmazonPageResult[],
+) {
+  if (!results.length) {
+    return { ok: true as const, updatedRange: null, rowCount: 0 };
+  }
+
+  const env = getEnv();
+  const missing = getMissingEnvKeys().filter((key) =>
+    ["GOOGLE_SHEET_ID", "GOOGLE_SERVICE_ACCOUNT_EMAIL", "GOOGLE_PRIVATE_KEY"].includes(key),
+  );
+
+  if (missing.length > 0) {
+    throw new Error(`Missing required Google Sheets env vars: ${missing.join(", ")}`);
+  }
+
+  const sheets = getSheetsClient();
+  const tabName = env.googleSheetTabName || "results";
+  const rows = buildAmazonResultRows(runId, results);
+
+  const appendResult = await sheets.spreadsheets.values.append({
+    spreadsheetId: env.googleSheetId,
+    range: `${quoteSheetTabName(tabName)}!A:K`,
+    valueInputOption: "RAW",
+    insertDataOption: "INSERT_ROWS",
+    requestBody: {
+      values: rows,
+    },
+  });
+
+  return {
+    ok: true as const,
+    updatedRange: appendResult.data.updates?.updatedRange ?? null,
+    rowCount: rows.length,
   };
 }

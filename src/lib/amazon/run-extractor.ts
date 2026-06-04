@@ -3,6 +3,7 @@ import { getRun, updateRun } from "@/lib/job-store";
 import type { AmazonPageResult } from "@/lib/types";
 import { getEnv } from "@/lib/config/env";
 import { randomDelayMs, sleep } from "@/lib/delay";
+import { appendAmazonResultsToSheet } from "@/lib/sheets";
 import { scrapeAmazonShopPage } from "./playwright-scraper";
 
 function pendingIndices(results: AmazonPageResult[]) {
@@ -67,10 +68,12 @@ export async function extractAmazonSocialLinksForRun(runId: string) {
             : item,
         );
 
+        await appendAmazonResultsToSheet(runId, [results[entry.index]]);
+
         await updateRun(runId, {
           results,
           status: "running",
-          message: `已完成 ${position + 1}/${pending.length} 个页面。`,
+          message: `已完成 ${position + 1}/${pending.length} 个页面，并同步到 Google Sheets。`,
         });
       } finally {
         await page.close().catch(() => {});
@@ -80,7 +83,7 @@ export async function extractAmazonSocialLinksForRun(runId: string) {
     await updateRun(runId, {
       results,
       status: "completed",
-      message: `已完成 ${pending.length} 个页面的公开社交链接提取。`,
+      message: `已完成 ${pending.length} 个页面的公开社交链接提取，并同步到 Google Sheets。`,
     });
 
     return { processed: pending.length };

@@ -17,6 +17,8 @@ type SerpApiResponse = {
   error_message?: string;
 };
 
+const SERP_PAGES = [0, 20];
+
 export type SerpApiAmazonDiscovery = {
   keyword: string;
   query: string;
@@ -24,7 +26,10 @@ export type SerpApiAmazonDiscovery = {
   rawResultCount: number;
 };
 
-export async function searchAmazonShopUrls(keyword: string): Promise<SerpApiAmazonDiscovery> {
+async function searchAmazonShopUrlsPage(
+  keyword: string,
+  start: number,
+): Promise<SerpApiAmazonDiscovery> {
   const env = getEnv();
   if (!env.serpapiKey) {
     throw new Error("SERPAPI_KEY is missing.");
@@ -35,7 +40,8 @@ export async function searchAmazonShopUrls(keyword: string): Promise<SerpApiAmaz
   url.searchParams.set("engine", "google");
   url.searchParams.set("q", query);
   url.searchParams.set("api_key", env.serpapiKey);
-  url.searchParams.set("num", "10");
+  url.searchParams.set("num", "20");
+  url.searchParams.set("start", String(start));
 
   const response = await fetch(url.toString(), {
     method: "GET",
@@ -73,6 +79,21 @@ export async function searchAmazonShopUrls(keyword: string): Promise<SerpApiAmaz
     query,
     urls,
     rawResultCount: organicResults.length,
+  };
+}
+
+export async function searchAmazonShopUrls(keyword: string): Promise<SerpApiAmazonDiscovery> {
+  const pages = await Promise.all(
+    SERP_PAGES.map(async (start) => searchAmazonShopUrlsPage(keyword, start)),
+  );
+
+  const urls = Array.from(new Set(pages.flatMap((page) => page.urls)));
+
+  return {
+    keyword,
+    query: pages[0]?.query ?? `site:amazon.com/shop ${keyword}`,
+    urls,
+    rawResultCount: pages.reduce((total, page) => total + page.rawResultCount, 0),
   };
 }
 
