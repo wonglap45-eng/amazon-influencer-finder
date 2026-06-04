@@ -8,11 +8,12 @@ export function normalizeAmazonShopUrl(value: string) {
     }
 
     const path = url.pathname.replace(/\/+$/, "");
-    if (!/\/shop\/[^/]+/i.test(path)) {
+    const match = path.match(/^\/shop\/([^/]+)/i);
+    if (!match) {
       return null;
     }
 
-    return `https://www.amazon.com${path}`;
+    return `https://www.amazon.com/shop/${match[1]}`;
   } catch {
     return null;
   }

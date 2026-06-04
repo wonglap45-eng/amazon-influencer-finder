@@ -241,7 +241,7 @@ export function RunWorkbench() {
               <div className="text-sm font-medium text-slate-200">接下来会做什么</div>
               <ul className="mt-3 space-y-2 text-sm text-slate-400">
                 <li>- 创建任务</li>
-                <li>- 用 SerpAPI 发现 Amazon 店铺页面</li>
+                <li>- 用 SerpAPI 发现 Amazon 达人主页</li>
                 <li>- 在本地保存候选 URL</li>
                 <li>- 为后续 Playwright 抓取做准备</li>
               </ul>
@@ -279,7 +279,7 @@ export function RunWorkbench() {
               disabled={discoverBusy || !activeRunId}
               className="rounded-2xl border border-sky-300/30 bg-sky-300/10 px-5 py-3 text-sm font-semibold text-sky-100 transition hover:bg-sky-300/20 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {discoverBusy ? "发现中..." : "发现 Amazon 页面"}
+              {discoverBusy ? "发现中..." : "发现 Amazon 达人主页"}
             </button>
 
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
@@ -404,7 +404,7 @@ export function RunWorkbench() {
                 <table className="w-full border-collapse text-left text-sm">
                   <thead className="bg-white/5 text-slate-300">
                     <tr>
-                      <th className="px-4 py-3 font-medium">Amazon 页面</th>
+                      <th className="px-4 py-3 font-medium">达人主页</th>
                       <th className="px-4 py-3 font-medium">状态</th>
                       <th className="px-4 py-3 font-medium">社交链接</th>
                       <th className="px-4 py-3 font-medium">备注</th>

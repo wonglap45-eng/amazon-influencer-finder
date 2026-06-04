@@ -29,13 +29,13 @@ export async function POST(_: Request, { params }: Params) {
       keyword,
       state: "pending",
       socialLinks: [],
-      note: "Discovered via SerpAPI. Ready for Playwright extraction.",
+      note: "已归一化为达人主页，等待 Playwright 提取。",
     }));
 
     const message =
       uniqueUrls.length > 0
-        ? `已发现 ${uniqueUrls.length} 个 Amazon 候选页面。`
-        : "当前关键词没有找到 Amazon 候选页面。";
+        ? `已发现 ${uniqueUrls.length} 个 Amazon 达人主页候选。`
+        : "当前关键词没有找到 Amazon 达人主页候选。";
 
     const nextRun = await setRunResults(id, results, "running", message);
     const refreshedRun = nextRun ?? (await getRun(id));
