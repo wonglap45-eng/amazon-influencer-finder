@@ -2,7 +2,6 @@ FROM mcr.microsoft.com/playwright:v1.60.0-noble
 
 WORKDIR /app
 
-ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
@@ -13,6 +12,8 @@ RUN npm ci
 
 COPY . .
 RUN npm run build
+
+ENV NODE_ENV=production
 
 EXPOSE 3000
 
