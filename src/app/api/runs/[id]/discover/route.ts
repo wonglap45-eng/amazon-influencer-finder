@@ -1,6 +1,6 @@
 import { getRun, setRunResults, updateRun } from "@/lib/job-store";
 import type { AmazonPageResult } from "@/lib/types";
-import { discoverAmazonShopUrlsForKeywords } from "@/lib/serpapi/search";
+import { discoverAmazonShopUrlsForKeywords } from "@/lib/search/discover";
 
 type Params = { params: Promise<{ id: string }> };
 

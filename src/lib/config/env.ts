@@ -1,5 +1,7 @@
 type EnvShape = {
   SERPAPI_KEY?: string;
+  SERPER_API_KEY?: string;
+  SEARCH_PROVIDER?: string;
   GOOGLE_SHEET_ID?: string;
   GOOGLE_SHEETS_TAB_NAME?: string;
   GOOGLE_SERVICE_ACCOUNT_EMAIL?: string;
@@ -16,9 +18,12 @@ function readEnv(): EnvShape {
 
 export function getEnv() {
   const env = readEnv();
+  const searchProvider = (env.SEARCH_PROVIDER ?? "serpapi").toLowerCase();
 
   return {
     serpapiKey: env.SERPAPI_KEY ?? "",
+    serperApiKey: env.SERPER_API_KEY ?? "",
+    searchProvider,
     googleSheetId: env.GOOGLE_SHEET_ID ?? "",
     googleSheetTabName: env.GOOGLE_SHEETS_TAB_NAME ?? "results",
     googleServiceAccountEmail: env.GOOGLE_SERVICE_ACCOUNT_EMAIL ?? "",
@@ -34,11 +39,15 @@ export function getMissingEnvKeys() {
   const env = getEnv();
   const missing: string[] = [];
 
-  if (!env.serpapiKey) missing.push("SERPAPI_KEY");
+  if (env.searchProvider === "serper") {
+    if (!env.serperApiKey) missing.push("SERPER_API_KEY");
+  } else {
+    if (!env.serpapiKey) missing.push("SERPAPI_KEY");
+  }
+
   if (!env.googleSheetId) missing.push("GOOGLE_SHEET_ID");
   if (!env.googleServiceAccountEmail) missing.push("GOOGLE_SERVICE_ACCOUNT_EMAIL");
   if (!env.googlePrivateKey) missing.push("GOOGLE_PRIVATE_KEY");
 
   return missing;
 }
-
