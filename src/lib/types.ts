@@ -24,6 +24,7 @@ export type DiscoverySummary = {
   skippedCount: number;
   roundsByKeyword: Record<string, number>;
   discoveredAt: string;
+  roundsCompleted?: number;
 };
 
 export type AmazonPageResult = {
@@ -34,6 +35,9 @@ export type AmazonPageResult = {
   socialLinks: SocialLink[];
   title?: string;
   note?: string;
+  attempts?: number;
+  lastAttemptAt?: string;
+  lastError?: string;
 };
 
 export type RunRecord = {

@@ -1,15 +1,33 @@
 import {
   getKeywordDiscoveryRound,
-  getKnownAmazonShopUrlsFromRuns,
+  getKnownAmazonShopKeysFromRuns,
   getRun,
   updateRun,
 } from "@/lib/job-store";
 import { discoverAmazonShopUrlsForKeywords } from "@/lib/search/discover";
 import { normalizeKeywordKey } from "@/lib/search/keyword";
-import { listKnownAmazonShopUrlsFromSheet } from "@/lib/sheets";
+import { getAmazonShopDedupeKey } from "@/lib/amazon/url-normalizer";
+import { listKnownAmazonShopKeysFromSheet } from "@/lib/sheets";
 import type { AmazonPageResult } from "@/lib/types";
 
 type Params = { params: Promise<{ id: string }> };
+
+const MAX_DISCOVERY_ROUNDS_PER_REQUEST = 3;
+
+function hasPendingResults(results: AmazonPageResult[]) {
+  return results.some((result) => result.state === "pending");
+}
+
+function bumpRounds(roundsByKeyword: Record<string, number>, keywords: string[]) {
+  const next = { ...roundsByKeyword };
+
+  for (const keyword of keywords) {
+    const key = normalizeKeywordKey(keyword);
+    next[key] = (next[key] ?? 0) + 1;
+  }
+
+  return next;
+}
 
 export async function POST(_: Request, { params }: Params) {
   const { id } = await params;
@@ -24,7 +42,7 @@ export async function POST(_: Request, { params }: Params) {
   }
 
   try {
-    const roundsByKeywordEntries = await Promise.all(
+    const historicalRounds = await Promise.all(
       run.keywords.map(async (keyword) => {
         const key = normalizeKeywordKey(keyword);
         const historicalRound = await getKeywordDiscoveryRound(keyword, id);
@@ -32,80 +50,113 @@ export async function POST(_: Request, { params }: Params) {
         return [key, historicalRound + currentRound] as const;
       }),
     );
-    const roundsByKeyword = Object.fromEntries(roundsByKeywordEntries);
+
+    let roundsByKeyword = Object.fromEntries(historicalRounds);
+    const discoveredUrls = new Set(run.discoveredUrls);
+    let results = [...run.results];
+    let totalDiscovered = 0;
+    let totalSkipped = 0;
+    let roundsCompleted = 0;
+
+    const [sheetKnownKeys, runKnownKeys] = await Promise.all([
+      listKnownAmazonShopKeysFromSheet().catch(() => new Set<string>()),
+      getKnownAmazonShopKeysFromRuns(),
+    ]);
+    const knownKeys = new Set<string>([...sheetKnownKeys, ...runKnownKeys]);
 
     await updateRun(id, {
       status: "running",
       message: "正在发现候选页面...",
     });
 
-    const { discovered, uniqueUrls } = await discoverAmazonShopUrlsForKeywords(
-      run.keywords,
-      roundsByKeyword,
-    );
+    for (let roundIndex = 0; roundIndex < MAX_DISCOVERY_ROUNDS_PER_REQUEST; roundIndex += 1) {
+      const { uniqueUrls } = await discoverAmazonShopUrlsForKeywords(run.keywords, roundsByKeyword);
+      roundsCompleted += 1;
 
-    const [sheetKnownUrls, runKnownUrls] = await Promise.all([
-      listKnownAmazonShopUrlsFromSheet().catch(() => new Set<string>()),
-      getKnownAmazonShopUrlsFromRuns(),
-    ]);
+      const newCandidates: AmazonPageResult[] = [];
+      let skippedThisRound = 0;
 
-    const knownUrls = new Set<string>([...sheetKnownUrls, ...runKnownUrls]);
-    const newUniqueUrls = uniqueUrls.filter(({ url }) => !knownUrls.has(url));
-    const skippedCount = uniqueUrls.length - newUniqueUrls.length;
+      for (const candidate of uniqueUrls) {
+        const key = getAmazonShopDedupeKey(candidate.url);
+        if (!key || knownKeys.has(key)) {
+          skippedThisRound += 1;
+          continue;
+        }
 
-    const results: AmazonPageResult[] = newUniqueUrls.map(({ url, keyword }) => ({
-      url,
-      keyword,
-      state: "pending",
-      socialLinks: [],
-      note: "待处理。",
-    }));
+        knownKeys.add(key);
+        discoveredUrls.add(candidate.url);
+        newCandidates.push({
+          url: candidate.url,
+          keyword: candidate.keyword,
+          state: "pending",
+          socialLinks: [],
+          note: "待处理。",
+        });
+      }
 
-    const discoveredUrls = Array.from(
-      new Set([...run.discoveredUrls, ...newUniqueUrls.map((item) => item.url)]),
-    );
-    const mergedResults = [...run.results, ...results];
-    const message =
-      uniqueUrls.length === 0
-        ? "没有找到候选页面。"
-        : newUniqueUrls.length === 0
-          ? `找到 ${uniqueUrls.length} 个候选，但都已在历史结果中收录，已全部跳过。`
-          : skippedCount > 0
-            ? `找到 ${uniqueUrls.length} 个候选，其中 ${skippedCount} 个已存在，新增 ${newUniqueUrls.length} 个。`
-            : `已发现 ${newUniqueUrls.length} 个新候选。`;
+      totalDiscovered += newCandidates.length;
+      totalSkipped += skippedThisRound;
+      roundsByKeyword = bumpRounds(roundsByKeyword, run.keywords);
 
-    const nextStatus = newUniqueUrls.length > 0 ? "running" : "completed";
-    const nextSearchRounds = Object.fromEntries(
-      run.keywords.map((keyword) => {
-        const key = normalizeKeywordKey(keyword);
-        return [key, (roundsByKeyword[key] ?? 0) + 1] as const;
-      }),
-    );
-    const discoverySummary = {
-      discoveredCount: newUniqueUrls.length,
-      skippedCount,
-      roundsByKeyword: nextSearchRounds,
-      discoveredAt: new Date().toISOString(),
-    };
+      if (newCandidates.length > 0) {
+        results = [...results, ...newCandidates];
+        await updateRun(id, {
+          status: "running",
+          results,
+          discoveredUrls: Array.from(discoveredUrls),
+          searchRounds: roundsByKeyword,
+          discoverySummary: {
+            discoveredCount: totalDiscovered,
+            skippedCount: totalSkipped,
+            roundsByKeyword,
+            discoveredAt: new Date().toISOString(),
+            roundsCompleted,
+          },
+          message:
+            totalSkipped > 0
+              ? `本次新增 ${totalDiscovered} 个，跳过 ${totalSkipped} 个。`
+              : `已发现 ${totalDiscovered} 个新候选。`,
+        });
+      } else {
+        await updateRun(id, {
+          status: results.length && hasPendingResults(results) ? "running" : "completed",
+          discoveredUrls: Array.from(discoveredUrls),
+          searchRounds: roundsByKeyword,
+          discoverySummary: {
+            discoveredCount: totalDiscovered,
+            skippedCount: totalSkipped,
+            roundsByKeyword,
+            discoveredAt: new Date().toISOString(),
+            roundsCompleted,
+          },
+          message:
+            uniqueUrls.length === 0
+              ? "没有找到候选页面。"
+              : totalDiscovered === 0
+                ? "没有新增候选页面。"
+                : `本次新增 ${totalDiscovered} 个，跳过 ${totalSkipped} 个。`,
+        });
 
-    await updateRun(id, {
-      status: nextStatus,
-      results: mergedResults,
-      message,
-      discoveredUrls,
-      searchRounds: nextSearchRounds,
-      discoverySummary,
-    });
+        if (uniqueUrls.length === 0) {
+          break;
+        }
+      }
+    }
 
     const refreshedRun = await getRun(id);
 
     return Response.json({
       ok: true,
       run: refreshedRun,
-      discovery: discovered,
-      discoveredCount: newUniqueUrls.length,
-      skippedCount,
-      message,
+      discoveredCount: totalDiscovered,
+      skippedCount: totalSkipped,
+      roundsCompleted,
+      message:
+        totalDiscovered === 0
+          ? "没有新增候选页面。"
+          : totalSkipped > 0
+            ? `本次新增 ${totalDiscovered} 个，跳过 ${totalSkipped} 个。`
+            : `已发现 ${totalDiscovered} 个新候选。`,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown_error";

@@ -1,5 +1,5 @@
 import { getEnv } from "../config/env";
-import { normalizeAmazonShopUrl } from "../amazon/url-normalizer";
+import { getAmazonShopDedupeKey, normalizeAmazonShopUrl } from "../amazon/url-normalizer";
 import { normalizeKeywordKey } from "../search/keyword";
 
 type SerpOrganicResult = {
@@ -75,12 +75,13 @@ async function searchAmazonShopUrlsPage(
     : [];
 
   const urls = Array.from(
-    new Set(
+    new Map(
       organicResults
         .map((item) => item.link ?? "")
         .map((link) => normalizeAmazonShopUrl(link))
-        .filter((link): link is string => Boolean(link)),
-    ),
+        .filter((link): link is string => Boolean(link))
+        .map((url) => [getAmazonShopDedupeKey(url) ?? url, url] as const),
+    ).values(),
   );
 
   return {
@@ -107,7 +108,13 @@ export async function searchAmazonShopUrlsWithRound(
     ),
   );
 
-  const urls = Array.from(new Set(pages.flatMap((page) => page.urls)));
+  const urls = Array.from(
+    new Map(
+      pages
+        .flatMap((page) => page.urls)
+        .map((url) => [getAmazonShopDedupeKey(url) ?? url, url] as const),
+    ).values(),
+  );
 
   return {
     keyword,

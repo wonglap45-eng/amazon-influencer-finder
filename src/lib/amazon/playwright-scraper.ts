@@ -1,7 +1,7 @@
 import type { Page } from "playwright";
 import type { AmazonPageResult } from "@/lib/types";
 import { blockReasonLabel, detectBlockReason } from "./block-detector";
-import { extractPublicSocialLinks } from "./social-link-extractor";
+import { collectCandidateLinksFromDom, extractPublicSocialLinks } from "./social-link-extractor";
 
 type ScrapeOutcome = Pick<
   AmazonPageResult,
@@ -12,36 +12,6 @@ async function readBodyText(page: Page) {
   return page
     .evaluate(() => document.body?.innerText ?? document.body?.textContent ?? "")
     .catch(() => "");
-}
-
-async function collectCandidates(page: Page) {
-  return page
-    .evaluate(() => {
-      const elements = Array.from(
-        document.querySelectorAll<HTMLElement>(
-          "a[href], [data-href], [data-url], [data-share-url]",
-        ),
-      );
-
-      return elements
-        .map((element) => {
-          const href =
-            element.getAttribute("href") ??
-            element.getAttribute("data-href") ??
-            element.getAttribute("data-url") ??
-            element.getAttribute("data-share-url") ??
-            "";
-
-          return {
-            href,
-            text: (element.textContent ?? "").trim().slice(0, 200),
-            ariaLabel: element.getAttribute("aria-label") ?? "",
-            title: element.getAttribute("title") ?? "",
-          };
-        })
-        .filter((candidate) => Boolean(candidate.href));
-    })
-    .catch(() => []);
 }
 
 export async function scrapeAmazonShopPage(page: Page, url: string): Promise<ScrapeOutcome> {
@@ -72,11 +42,14 @@ export async function scrapeAmazonShopPage(page: Page, url: string): Promise<Scr
       };
     }
 
-    const candidates = (await collectCandidates(page)) as Array<{
+    const candidates = (await page.evaluate(collectCandidateLinksFromDom).catch(() => [])) as Array<{
       href: string;
       text?: string;
       ariaLabel?: string;
       title?: string;
+      alt?: string;
+      className?: string;
+      containerClassName?: string;
     }>;
 
     const socialLinks = extractPublicSocialLinks(candidates, currentUrl);
@@ -91,10 +64,10 @@ export async function scrapeAmazonShopPage(page: Page, url: string): Promise<Scr
     }
 
     return {
-      state: "error",
+      state: "ok",
       socialLinks: [],
       title,
-      note: "未找到结果。",
+      note: "未找到公开社交链接。",
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown_error";

@@ -7,10 +7,6 @@ type Params = { params: Promise<{ id: string }> };
 
 const activeExtractionJobs = new Set<string>();
 
-function isExtractionInProgress(message?: string | null) {
-  return Boolean(message && message.includes("处理中"));
-}
-
 export async function POST(_: Request, { params }: Params) {
   const { id } = await params;
   const run = await getRun(id);
@@ -19,11 +15,16 @@ export async function POST(_: Request, { params }: Params) {
     return Response.json({ ok: false, error: "not_found" }, { status: 404 });
   }
 
-  if (activeExtractionJobs.has(id) || isExtractionInProgress(run.message)) {
+  if (activeExtractionJobs.has(id)) {
     return Response.json({ ok: false, error: "extracting" }, { status: 409 });
   }
 
   activeExtractionJobs.add(id);
+
+  await updateRun(id, {
+    status: "running",
+    message: "处理中...",
+  });
 
   void extractAmazonSocialLinksForRun(id)
     .catch(async (error) => {
@@ -36,11 +37,6 @@ export async function POST(_: Request, { params }: Params) {
     .finally(() => {
       activeExtractionJobs.delete(id);
     });
-
-  await updateRun(id, {
-    status: "running",
-    message: "处理中，页面会自动刷新。",
-  });
 
   const refreshed = await getRun(id);
   return Response.json({

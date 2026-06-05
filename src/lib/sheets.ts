@@ -1,6 +1,6 @@
 import { google } from "googleapis";
 import { getEnv, getMissingEnvKeys } from "./config/env";
-import { normalizeAmazonShopUrl } from "./amazon/url-normalizer";
+import { getAmazonShopDedupeKey } from "./amazon/url-normalizer";
 import type { AmazonPageResult } from "./types";
 
 type SheetsVerifySuccess = {
@@ -60,7 +60,7 @@ function normalizePrivateKey(raw: string) {
     .trim();
 }
 
-function quoteSheetTabName(tabName: string) {
+export function quoteSheetTabName(tabName: string) {
   return `'${tabName.replace(/'/g, "''")}'`;
 }
 
@@ -152,6 +152,16 @@ function joinCell(values: string[]) {
   return values.length > 0 ? values.join("\n") : "";
 }
 
+function parseUpdatedRangeRowIndex(updatedRange?: string | null) {
+  if (!updatedRange) return null;
+
+  const match = updatedRange.match(/!(?:[A-Z]+)(\d+)(?::[A-Z]+(?:\d+)?)?$/i);
+  if (!match?.[1]) return null;
+
+  const rowIndex = Number(match[1]);
+  return Number.isFinite(rowIndex) ? rowIndex : null;
+}
+
 function formatBeijingTimestamp(date: Date) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Shanghai",
@@ -192,6 +202,29 @@ function buildAmazonResultRows(
     syncedAt,
     result.keyword,
   ]);
+}
+
+async function loadAmazonResultRowIndexByKey(tabName: string) {
+  const env = getEnv();
+  const sheets = getSheetsClient();
+
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId: env.googleSheetId,
+    range: `${quoteSheetTabName(tabName)}!H2:H`,
+  });
+
+  const rows = response.data.values ?? [];
+  const rowIndexByKey = new Map<string, number>();
+
+  for (const [offset, row] of rows.entries()) {
+    const rawUrl = Array.isArray(row) ? String(row[0] ?? "").trim() : "";
+    const key = getAmazonShopDedupeKey(rawUrl);
+    if (key) {
+      rowIndexByKey.set(key, offset + 2);
+    }
+  }
+
+  return rowIndexByKey;
 }
 
 function getPrivateKey() {
@@ -285,7 +318,7 @@ export async function verifySheetsConnection(): Promise<SheetsVerifyResult> {
 }
 
 export async function appendAmazonResultsToSheet(
-  runId: string,
+  _runId: string,
   results: AmazonPageResult[],
 ) {
   if (!results.length) {
@@ -304,25 +337,58 @@ export async function appendAmazonResultsToSheet(
   const sheets = getSheetsClient();
   const tabName = env.googleSheetTabName || "results";
   const rows = buildAmazonResultRows(results);
+  const rowIndexByKey = await loadAmazonResultRowIndexByKey(tabName);
 
-  const appendResult = await sheets.spreadsheets.values.append({
-    spreadsheetId: env.googleSheetId,
-    range: `${quoteSheetTabName(tabName)}!A:K`,
-    valueInputOption: "RAW",
-    insertDataOption: "INSERT_ROWS",
-    requestBody: {
-      values: rows,
-    },
-  });
+  let updatedRange: string | null = null;
+  let rowCount = 0;
+
+  for (const [index, result] of results.entries()) {
+    const row = rows[index];
+    const key = getAmazonShopDedupeKey(result.url);
+    const existingRowIndex = key ? rowIndexByKey.get(key) : null;
+
+    if (existingRowIndex) {
+      const updateResult = await sheets.spreadsheets.values.update({
+        spreadsheetId: env.googleSheetId,
+        range: `${quoteSheetTabName(tabName)}!A${existingRowIndex}:K${existingRowIndex}`,
+        valueInputOption: "RAW",
+        requestBody: {
+          values: [row],
+        },
+      });
+
+      updatedRange = updateResult.data.updatedRange ?? updatedRange;
+      rowCount += 1;
+      continue;
+    }
+
+    const appendResult = await sheets.spreadsheets.values.append({
+      spreadsheetId: env.googleSheetId,
+      range: `${quoteSheetTabName(tabName)}!A:K`,
+      valueInputOption: "RAW",
+      insertDataOption: "INSERT_ROWS",
+      requestBody: {
+        values: [row],
+      },
+    });
+
+    const appendedRowIndex = parseUpdatedRangeRowIndex(appendResult.data.updates?.updatedRange);
+    if (key && appendedRowIndex) {
+      rowIndexByKey.set(key, appendedRowIndex);
+    }
+
+    updatedRange = appendResult.data.updates?.updatedRange ?? updatedRange;
+    rowCount += 1;
+  }
 
   return {
     ok: true as const,
-    updatedRange: appendResult.data.updates?.updatedRange ?? null,
-    rowCount: rows.length,
+    updatedRange,
+    rowCount,
   };
 }
 
-export async function listKnownAmazonShopUrlsFromSheet() {
+export async function listKnownAmazonShopKeysFromSheet() {
   const env = getEnv();
   const missing = getMissingEnvKeys().filter((key) =>
     ["GOOGLE_SHEET_ID", "GOOGLE_SERVICE_ACCOUNT_EMAIL", "GOOGLE_PRIVATE_KEY"].includes(key),
@@ -341,15 +407,19 @@ export async function listKnownAmazonShopUrlsFromSheet() {
   });
 
   const rows = response.data.values ?? [];
-  const urls = new Set<string>();
+  const keys = new Set<string>();
 
   for (const row of rows) {
     const raw = Array.isArray(row) ? String(row[0] ?? "").trim() : "";
-    const normalized = normalizeAmazonShopUrl(raw);
-    if (normalized) {
-      urls.add(normalized);
+    const key = getAmazonShopDedupeKey(raw);
+    if (key) {
+      keys.add(key);
     }
   }
 
-  return urls;
+  return keys;
+}
+
+export async function listKnownAmazonShopUrlsFromSheet() {
+  return listKnownAmazonShopKeysFromSheet();
 }
