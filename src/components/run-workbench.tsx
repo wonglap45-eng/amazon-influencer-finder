@@ -3,7 +3,6 @@
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import type { AmazonPageResult, RunRecord } from "@/lib/types";
-import { normalizeKeywordKey } from "@/lib/search/keyword";
 
 function parseKeywords(raw: string) {
   return Array.from(
@@ -44,13 +43,6 @@ function platformCountForLinks(links: AmazonPageResult["socialLinks"]) {
   return new Set(
     links.map((item) => item.platform ?? item.type ?? item.host ?? "website"),
   ).size;
-}
-
-function discoveryRoundRows(run: RunRecord) {
-  return run.keywords.map((keyword) => ({
-    keyword,
-    completedRounds: run.searchRounds?.[normalizeKeywordKey(keyword)] ?? 0,
-  }));
 }
 
 export function RunWorkbench() {
@@ -122,7 +114,7 @@ export function RunWorkbench() {
     try {
       const keywords = parseKeywords(keywordsText);
       if (!keywords.length) {
-        setMessage("请至少输入一个关键词。");
+        setMessage("请先输入关键词。");
         return;
       }
 
@@ -182,7 +174,7 @@ export function RunWorkbench() {
 
   async function handleDiscover() {
     if (!activeRunId) {
-      setDiscoverMessage("请先创建或选择一个任务。");
+      setDiscoverMessage("未选择任务。");
       return;
     }
 
@@ -200,12 +192,11 @@ export function RunWorkbench() {
         run?: RunRecord;
         discoveredCount?: number;
         skippedCount?: number;
-        provider?: string;
         message?: string;
       };
 
       if (!response.ok || !data.ok || !data.run) {
-        setDiscoverMessage(data.error ?? "发现流程失败。");
+        setDiscoverMessage(data.error ?? "发现失败。");
         return;
       }
 
@@ -213,7 +204,7 @@ export function RunWorkbench() {
       setDiscoverMessage(
         data.message ??
           (data.discoveredCount
-            ? `${data.provider ?? "当前搜索源"} 发现 ${data.discoveredCount} 个 Amazon 候选页面。`
+            ? `发现 ${data.discoveredCount} 个候选页面。`
             : "没有找到 Amazon 候选页面。"),
       );
     } catch {
@@ -225,12 +216,12 @@ export function RunWorkbench() {
 
   async function handleExtract() {
     if (!activeRunId) {
-      setExtractMessage("请先创建或选择一个任务。");
+      setExtractMessage("未选择任务。");
       return;
     }
 
     if (!activeRun?.results.length) {
-      setExtractMessage("当前任务还没有可提取的 Amazon 页面，请先点“发现 Amazon 达人主页”。");
+      setExtractMessage("暂无可提取页面。");
       return;
     }
 
@@ -251,7 +242,7 @@ export function RunWorkbench() {
 
       if (!response.ok || !data.ok) {
         if (data.error === "extracting") {
-          setExtractMessage("当前任务已经在提取中，请稍等自动刷新。");
+          setExtractMessage("提取中，请稍等。");
         } else {
           setExtractMessage(data.error ?? "提取社交链接失败。");
         }
@@ -262,7 +253,7 @@ export function RunWorkbench() {
         setRuns((current) => [data.run!, ...current.filter((run) => run.id !== data.run!.id)]);
       }
 
-      setExtractMessage("已开始提取公开社交链接，结果会自动刷新。");
+      setExtractMessage("已开始处理，结果会自动刷新。");
     } catch {
       setExtractMessage("提取社交链接请求失败。");
     } finally {
@@ -273,9 +264,6 @@ export function RunWorkbench() {
   const stats = activeRun ? summaryForResults(activeRun.results) : null;
   const keywords = activeRun?.keywords ?? [];
   const discoverySummary = activeRun?.discoverySummary ?? null;
-  const roundRows = activeRun ? discoveryRoundRows(activeRun) : [];
-  const hasDiscoveryProgress =
-    Boolean(discoverySummary) || roundRows.some((row) => row.completedRounds > 0);
 
   return (
     <section className="mx-auto w-full max-w-7xl px-6 pb-16 lg:px-10">
@@ -283,13 +271,8 @@ export function RunWorkbench() {
         <div className="flex flex-col gap-4 border-b border-white/10 pb-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h2 className="text-2xl font-semibold">任务工作台</h2>
-            <p className="mt-1 text-sm text-slate-400">
-              先创建任务，再用当前搜索源发现 Amazon 页面，后续会接入抓取和写表。
-            </p>
           </div>
-          <div className="text-sm text-slate-300">
-            当前共 {runs.length} 个任务{runs.length === 1 ? "" : "s"}
-          </div>
+          <div className="text-sm text-slate-300">当前共 {runs.length} 个任务</div>
         </div>
 
         <form className="mt-6 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]" onSubmit={handleSubmit}>
@@ -302,27 +285,11 @@ export function RunWorkbench() {
               className="min-h-56 rounded-2xl border border-white/10 bg-black/30 px-4 py-3 font-mono text-sm text-slate-100 outline-none transition focus:border-sky-300/50 focus:ring-2 focus:ring-sky-300/20"
               placeholder={"cleaning\nhome cleaning\npet supplies"}
             />
-            <p className="text-xs text-slate-500">
-              支持每行一个关键词，也支持逗号分隔。重复项会自动去重。
-            </p>
           </label>
 
           <div className="flex flex-col gap-4">
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <div className="text-sm font-medium text-slate-200">接下来会做什么</div>
-              <ul className="mt-3 space-y-2 text-sm text-slate-400">
-                <li>- 创建任务</li>
-                <li>- 用当前搜索源发现 Amazon 达人主页</li>
-                <li>- 在本地保存候选 URL</li>
-                <li>- 为后续 Playwright 抓取做准备</li>
-              </ul>
-            </div>
-
             <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4">
               <div className="text-sm font-medium text-emerald-100">Google Sheets 检查</div>
-              <p className="mt-2 text-sm text-emerald-50/80">
-                用来验证 Sheet ID、服务账号邮箱、私钥和写入权限。
-              </p>
               <button
                 type="button"
                 onClick={() => void handleSheetCheck()}
@@ -331,9 +298,9 @@ export function RunWorkbench() {
               >
                 {sheetCheckBusy ? "检查中..." : "验证 Google Sheets"}
               </button>
-              <p className="mt-3 text-xs leading-5 text-emerald-50/80">
-                {sheetCheckMessage || "点击后会向你的标签页写入一行测试数据。"}
-              </p>
+              {sheetCheckMessage ? (
+                <p className="mt-3 text-xs leading-5 text-emerald-50/80">{sheetCheckMessage}</p>
+              ) : null}
             </div>
 
             <button
@@ -388,7 +355,7 @@ export function RunWorkbench() {
           <div className="mt-4 space-y-3">
             {runs.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 p-4 text-sm text-slate-500">
-                还没有任务，先在上面创建一个。
+                暂无任务。
               </div>
             ) : (
               runs.map((run) => (
@@ -432,7 +399,7 @@ export function RunWorkbench() {
         <div className="glass rounded-3xl p-6">
           {!activeRun ? (
             <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 p-8 text-center text-slate-500">
-              选择一个任务即可查看详情。
+              请选择任务。
             </div>
           ) : (
             <>
@@ -481,24 +448,8 @@ export function RunWorkbench() {
                   ))}
               </div>
 
-              {activeRun.message ? (
-                <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
-                  <div className="text-xs uppercase tracking-wide text-slate-500">后端消息</div>
-                  <p className="mt-2 break-words">{activeRun.message}</p>
-                </div>
-              ) : null}
-
               {discoverySummary ? (
-                <div className="mt-4 grid gap-3 md:grid-cols-3">
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <div className="text-xs uppercase tracking-wide text-slate-500">搜索源</div>
-                    <div className="mt-2 text-base font-semibold text-slate-100">
-                      {discoverySummary.provider}
-                    </div>
-                    <div className="mt-1 text-xs text-slate-500">
-                      {new Date(discoverySummary.discoveredAt).toLocaleString()}
-                    </div>
-                  </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
                     <div className="text-xs uppercase tracking-wide text-slate-500">本次新增</div>
                     <div className="mt-2 text-2xl font-semibold text-slate-100">
@@ -520,25 +471,6 @@ export function RunWorkbench() {
                 </div>
               ) : null}
 
-              {hasDiscoveryProgress ? (
-                <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
-                  <div className="text-xs uppercase tracking-wide text-slate-500">发现轮次</div>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {roundRows.map(({ keyword, completedRounds }) => (
-                      <div
-                        key={keyword}
-                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2"
-                      >
-                        <div className="text-sm font-medium text-slate-100">{keyword}</div>
-                        <div className="mt-1 text-xs text-slate-400">
-                          已完成 {completedRounds} 轮，下一轮第 {completedRounds + 1} 轮
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
               <div className="mt-6 overflow-hidden rounded-2xl border border-white/10">
                 <table className="w-full border-collapse text-left text-sm">
                   <thead className="bg-white/5 text-slate-300">
@@ -554,7 +486,7 @@ export function RunWorkbench() {
                     {activeRun.results.length === 0 ? (
                       <tr>
                         <td className="px-4 py-6 text-slate-500" colSpan={5}>
-                          还没有提取结果，这在接入 Playwright 之前是正常的。
+                          暂无结果。
                         </td>
                       </tr>
                     ) : (
@@ -601,7 +533,13 @@ export function RunWorkbench() {
                             </span>
                           </td>
                           <td className="px-4 py-4 align-top text-slate-400">
-                            {result.note || "—"}
+                            {result.state === "pending"
+                              ? "待处理"
+                              : result.state === "ok"
+                                ? "完成"
+                                : result.state === "blocked"
+                                  ? "已阻断"
+                                  : "错误"}
                           </td>
                         </tr>
                       ))

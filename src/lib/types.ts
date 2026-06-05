@@ -20,7 +20,6 @@ export type SocialLink = {
 };
 
 export type DiscoverySummary = {
-  provider: string;
   discoveredCount: number;
   skippedCount: number;
   roundsByKeyword: Record<string, number>;

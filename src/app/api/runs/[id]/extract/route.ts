@@ -8,7 +8,7 @@ type Params = { params: Promise<{ id: string }> };
 const activeExtractionJobs = new Set<string>();
 
 function isExtractionInProgress(message?: string | null) {
-  return Boolean(message && message.includes("公开社交链接"));
+  return Boolean(message && message.includes("处理中"));
 }
 
 export async function POST(_: Request, { params }: Params) {
@@ -39,7 +39,7 @@ export async function POST(_: Request, { params }: Params) {
 
   await updateRun(id, {
     status: "running",
-    message: "已开始提取公开社交链接，页面会自动刷新显示结果。",
+    message: "处理中，页面会自动刷新。",
   });
 
   const refreshed = await getRun(id);

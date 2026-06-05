@@ -68,7 +68,7 @@ export async function scrapeAmazonShopPage(page: Page, url: string): Promise<Scr
         blockedReason,
         socialLinks: [],
         title,
-        note: `页面触发 ${blockReasonLabel(blockedReason)}，已按规则记录为 blocked。`,
+        note: `已记录为 blocked：${blockReasonLabel(blockedReason)}。`,
       };
     }
 
@@ -86,7 +86,7 @@ export async function scrapeAmazonShopPage(page: Page, url: string): Promise<Scr
         state: "ok",
         socialLinks,
         title,
-        note: `已提取 ${socialLinks.length} 个公开社交链接。`,
+        note: `已完成 ${socialLinks.length} 个链接。`,
       };
     }
 
@@ -94,7 +94,7 @@ export async function scrapeAmazonShopPage(page: Page, url: string): Promise<Scr
       state: "error",
       socialLinks: [],
       title,
-      note: "未找到可直接提取的公开社交链接。",
+      note: "未找到结果。",
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown_error";

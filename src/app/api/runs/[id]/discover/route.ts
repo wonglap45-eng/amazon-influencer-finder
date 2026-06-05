@@ -1,4 +1,3 @@
-import { getEnv } from "@/lib/config/env";
 import {
   getKeywordDiscoveryRound,
   getKnownAmazonShopUrlsFromRuns,
@@ -15,8 +14,6 @@ type Params = { params: Promise<{ id: string }> };
 export async function POST(_: Request, { params }: Params) {
   const { id } = await params;
   const run = await getRun(id);
-  const env = getEnv();
-  const provider = env.searchProvider === "serper" ? "Serper" : "SerpAPI";
 
   if (!run) {
     return Response.json({ error: "not_found" }, { status: 404 });
@@ -39,7 +36,7 @@ export async function POST(_: Request, { params }: Params) {
 
     await updateRun(id, {
       status: "running",
-      message: `正在使用 ${provider} 继续发现 Amazon 达人主页（会自动进入更深一轮搜索）...`,
+      message: "正在发现候选页面...",
     });
 
     const { discovered, uniqueUrls } = await discoverAmazonShopUrlsForKeywords(
@@ -61,7 +58,7 @@ export async function POST(_: Request, { params }: Params) {
       keyword,
       state: "pending",
       socialLinks: [],
-      note: "已归一化为达人主页，等待 Playwright 提取。",
+      note: "待处理。",
     }));
 
     const discoveredUrls = Array.from(
@@ -70,12 +67,12 @@ export async function POST(_: Request, { params }: Params) {
     const mergedResults = [...run.results, ...results];
     const message =
       uniqueUrls.length === 0
-        ? `${provider} 没有找到 Amazon 达人主页候选。`
+        ? "没有找到候选页面。"
         : newUniqueUrls.length === 0
-          ? `${provider} 找到 ${uniqueUrls.length} 个候选，但它们都已在历史结果中收录，已全部跳过。`
+          ? `找到 ${uniqueUrls.length} 个候选，但都已在历史结果中收录，已全部跳过。`
           : skippedCount > 0
-            ? `${provider} 找到 ${uniqueUrls.length} 个候选，其中 ${skippedCount} 个已存在，新增 ${newUniqueUrls.length} 个。`
-            : `${provider} 已发现 ${newUniqueUrls.length} 个新的 Amazon 达人主页候选。`;
+            ? `找到 ${uniqueUrls.length} 个候选，其中 ${skippedCount} 个已存在，新增 ${newUniqueUrls.length} 个。`
+            : `已发现 ${newUniqueUrls.length} 个新候选。`;
 
     const nextStatus = newUniqueUrls.length > 0 ? "running" : "completed";
     const nextSearchRounds = Object.fromEntries(
@@ -85,7 +82,6 @@ export async function POST(_: Request, { params }: Params) {
       }),
     );
     const discoverySummary = {
-      provider,
       discoveredCount: newUniqueUrls.length,
       skippedCount,
       roundsByKeyword: nextSearchRounds,
@@ -109,7 +105,6 @@ export async function POST(_: Request, { params }: Params) {
       discovery: discovered,
       discoveredCount: newUniqueUrls.length,
       skippedCount,
-      provider,
       message,
     });
   } catch (error) {

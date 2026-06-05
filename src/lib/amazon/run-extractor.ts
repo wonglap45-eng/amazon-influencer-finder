@@ -23,7 +23,7 @@ export async function extractAmazonSocialLinksForRun(runId: string) {
   if (pending.length === 0) {
     await updateRun(runId, {
       status: "completed",
-      message: "没有待提取的页面。",
+      message: "没有待处理页面。",
     });
     return { processed: 0 };
   }
@@ -32,7 +32,7 @@ export async function extractAmazonSocialLinksForRun(runId: string) {
 
   await updateRun(runId, {
     status: "running",
-    message: `开始提取 ${pending.length} 个 Amazon 页面里的公开社交链接...`,
+    message: `开始处理 ${pending.length} 个页面...`,
   });
 
   let results = [...run.results];
@@ -55,7 +55,7 @@ export async function extractAmazonSocialLinksForRun(runId: string) {
         }
 
         await updateRun(runId, {
-          message: `正在提取第 ${position + 1}/${pending.length} 个页面：${entry.result.url}`,
+          message: `正在处理第 ${position + 1}/${pending.length} 个页面`,
         });
 
         const extracted = await scrapeAmazonShopPage(page, entry.result.url);
@@ -73,7 +73,7 @@ export async function extractAmazonSocialLinksForRun(runId: string) {
         await updateRun(runId, {
           results,
           status: "running",
-          message: `已完成 ${position + 1}/${pending.length} 个页面，并同步到 Google Sheets。`,
+          message: `已完成 ${position + 1}/${pending.length} 个页面。`,
         });
       } finally {
         await page.close().catch(() => {});
@@ -83,7 +83,7 @@ export async function extractAmazonSocialLinksForRun(runId: string) {
     await updateRun(runId, {
       results,
       status: "completed",
-      message: `已完成 ${pending.length} 个页面的公开社交链接提取，并同步到 Google Sheets。`,
+      message: `已完成 ${pending.length} 个页面。`,
     });
 
     return { processed: pending.length };
