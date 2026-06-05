@@ -19,6 +19,14 @@ export type SocialLink = {
   host?: string;
 };
 
+export type DiscoverySummary = {
+  provider: string;
+  discoveredCount: number;
+  skippedCount: number;
+  roundsByKeyword: Record<string, number>;
+  discoveredAt: string;
+};
+
 export type AmazonPageResult = {
   url: string;
   keyword: string;
@@ -38,5 +46,6 @@ export type RunRecord = {
   discoveredUrls: string[];
   results: AmazonPageResult[];
   searchRounds?: Record<string, number>;
+  discoverySummary?: DiscoverySummary;
   message?: string;
 };

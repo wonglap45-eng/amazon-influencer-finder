@@ -3,7 +3,6 @@ import {
   getKeywordDiscoveryRound,
   getKnownAmazonShopUrlsFromRuns,
   getRun,
-  setRunResults,
   updateRun,
 } from "@/lib/job-store";
 import { discoverAmazonShopUrlsForKeywords } from "@/lib/search/discover";
@@ -65,7 +64,10 @@ export async function POST(_: Request, { params }: Params) {
       note: "已归一化为达人主页，等待 Playwright 提取。",
     }));
 
-    const discoveredUrls = newUniqueUrls.map((item) => item.url);
+    const discoveredUrls = Array.from(
+      new Set([...run.discoveredUrls, ...newUniqueUrls.map((item) => item.url)]),
+    );
+    const mergedResults = [...run.results, ...results];
     const message =
       uniqueUrls.length === 0
         ? `${provider} 没有找到 Amazon 达人主页候选。`
@@ -76,20 +78,30 @@ export async function POST(_: Request, { params }: Params) {
             : `${provider} 已发现 ${newUniqueUrls.length} 个新的 Amazon 达人主页候选。`;
 
     const nextStatus = newUniqueUrls.length > 0 ? "running" : "completed";
-    const nextRun = await setRunResults(id, results, nextStatus, message);
     const nextSearchRounds = Object.fromEntries(
       run.keywords.map((keyword) => {
         const key = normalizeKeywordKey(keyword);
         return [key, (roundsByKeyword[key] ?? 0) + 1] as const;
       }),
     );
+    const discoverySummary = {
+      provider,
+      discoveredCount: newUniqueUrls.length,
+      skippedCount,
+      roundsByKeyword: nextSearchRounds,
+      discoveredAt: new Date().toISOString(),
+    };
 
     await updateRun(id, {
+      status: nextStatus,
+      results: mergedResults,
+      message,
       discoveredUrls,
       searchRounds: nextSearchRounds,
+      discoverySummary,
     });
 
-    const refreshedRun = nextRun ?? (await getRun(id));
+    const refreshedRun = await getRun(id);
 
     return Response.json({
       ok: true,

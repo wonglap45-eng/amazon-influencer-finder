@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import type { AmazonPageResult, RunRecord } from "@/lib/types";
+import { normalizeKeywordKey } from "@/lib/search/keyword";
 
 function parseKeywords(raw: string) {
   return Array.from(
@@ -43,6 +44,13 @@ function platformCountForLinks(links: AmazonPageResult["socialLinks"]) {
   return new Set(
     links.map((item) => item.platform ?? item.type ?? item.host ?? "website"),
   ).size;
+}
+
+function discoveryRoundRows(run: RunRecord) {
+  return run.keywords.map((keyword) => ({
+    keyword,
+    completedRounds: run.searchRounds?.[normalizeKeywordKey(keyword)] ?? 0,
+  }));
 }
 
 export function RunWorkbench() {
@@ -264,6 +272,10 @@ export function RunWorkbench() {
 
   const stats = activeRun ? summaryForResults(activeRun.results) : null;
   const keywords = activeRun?.keywords ?? [];
+  const discoverySummary = activeRun?.discoverySummary ?? null;
+  const roundRows = activeRun ? discoveryRoundRows(activeRun) : [];
+  const hasDiscoveryProgress =
+    Boolean(discoverySummary) || roundRows.some((row) => row.completedRounds > 0);
 
   return (
     <section className="mx-auto w-full max-w-7xl px-6 pb-16 lg:px-10">
@@ -473,6 +485,57 @@ export function RunWorkbench() {
                 <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-slate-300">
                   <div className="text-xs uppercase tracking-wide text-slate-500">后端消息</div>
                   <p className="mt-2 break-words">{activeRun.message}</p>
+                </div>
+              ) : null}
+
+              {discoverySummary ? (
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <div className="text-xs uppercase tracking-wide text-slate-500">搜索源</div>
+                    <div className="mt-2 text-base font-semibold text-slate-100">
+                      {discoverySummary.provider}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {new Date(discoverySummary.discoveredAt).toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <div className="text-xs uppercase tracking-wide text-slate-500">本次新增</div>
+                    <div className="mt-2 text-2xl font-semibold text-slate-100">
+                      {discoverySummary.discoveredCount}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      新发现的 Amazon 达人主页候选
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <div className="text-xs uppercase tracking-wide text-slate-500">跳过旧链接</div>
+                    <div className="mt-2 text-2xl font-semibold text-slate-100">
+                      {discoverySummary.skippedCount}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      历史里已经收录过的候选
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {hasDiscoveryProgress ? (
+                <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="text-xs uppercase tracking-wide text-slate-500">发现轮次</div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {roundRows.map(({ keyword, completedRounds }) => (
+                      <div
+                        key={keyword}
+                        className="rounded-xl border border-white/10 bg-white/5 px-3 py-2"
+                      >
+                        <div className="text-sm font-medium text-slate-100">{keyword}</div>
+                        <div className="mt-1 text-xs text-slate-400">
+                          已完成 {completedRounds} 轮，下一轮第 {completedRounds + 1} 轮
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : null}
 
