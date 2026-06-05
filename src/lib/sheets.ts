@@ -1,5 +1,6 @@
 import { google } from "googleapis";
 import { getEnv, getMissingEnvKeys } from "./config/env";
+import { normalizeAmazonShopUrl } from "./amazon/url-normalizer";
 import type { AmazonPageResult } from "./types";
 
 type SheetsVerifySuccess = {
@@ -319,4 +320,36 @@ export async function appendAmazonResultsToSheet(
     updatedRange: appendResult.data.updates?.updatedRange ?? null,
     rowCount: rows.length,
   };
+}
+
+export async function listKnownAmazonShopUrlsFromSheet() {
+  const env = getEnv();
+  const missing = getMissingEnvKeys().filter((key) =>
+    ["GOOGLE_SHEET_ID", "GOOGLE_SERVICE_ACCOUNT_EMAIL", "GOOGLE_PRIVATE_KEY"].includes(key),
+  );
+
+  if (missing.length > 0) {
+    return new Set<string>();
+  }
+
+  const sheets = getSheetsClient();
+  const tabName = env.googleSheetTabName || "results";
+
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId: env.googleSheetId,
+    range: `${quoteSheetTabName(tabName)}!H2:H`,
+  });
+
+  const rows = response.data.values ?? [];
+  const urls = new Set<string>();
+
+  for (const row of rows) {
+    const raw = Array.isArray(row) ? String(row[0] ?? "").trim() : "";
+    const normalized = normalizeAmazonShopUrl(raw);
+    if (normalized) {
+      urls.add(normalized);
+    }
+  }
+
+  return urls;
 }

@@ -191,7 +191,9 @@ export function RunWorkbench() {
         error?: string;
         run?: RunRecord;
         discoveredCount?: number;
+        skippedCount?: number;
         provider?: string;
+        message?: string;
       };
 
       if (!response.ok || !data.ok || !data.run) {
@@ -201,9 +203,10 @@ export function RunWorkbench() {
 
       setRuns((current) => [data.run!, ...current.filter((run) => run.id !== data.run!.id)]);
       setDiscoverMessage(
-        data.discoveredCount
-          ? `${data.provider ?? "当前搜索源"} 发现 ${data.discoveredCount} 个 Amazon 候选页面。`
-          : "没有找到 Amazon 候选页面。",
+        data.message ??
+          (data.discoveredCount
+            ? `${data.provider ?? "当前搜索源"} 发现 ${data.discoveredCount} 个 Amazon 候选页面。`
+            : "没有找到 Amazon 候选页面。"),
       );
     } catch {
       setDiscoverMessage("发现请求失败。");

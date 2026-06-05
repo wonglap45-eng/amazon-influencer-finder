@@ -1,7 +1,8 @@
 import { getEnv } from "@/lib/config/env";
-import { getRun, setRunResults, updateRun } from "@/lib/job-store";
+import { getKnownAmazonShopUrlsFromRuns, getRun, setRunResults, updateRun } from "@/lib/job-store";
 import type { AmazonPageResult } from "@/lib/types";
 import { discoverAmazonShopUrlsForKeywords } from "@/lib/search/discover";
+import { listKnownAmazonShopUrlsFromSheet } from "@/lib/sheets";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -26,8 +27,16 @@ export async function POST(_: Request, { params }: Params) {
     });
 
     const { discovered, uniqueUrls } = await discoverAmazonShopUrlsForKeywords(run.keywords);
+    const [sheetKnownUrls, runKnownUrls] = await Promise.all([
+      listKnownAmazonShopUrlsFromSheet().catch(() => new Set<string>()),
+      getKnownAmazonShopUrlsFromRuns(),
+    ]);
 
-    const results: AmazonPageResult[] = uniqueUrls.map(({ url, keyword }) => ({
+    const knownUrls = new Set<string>([...sheetKnownUrls, ...runKnownUrls]);
+    const newUniqueUrls = uniqueUrls.filter(({ url }) => !knownUrls.has(url));
+    const skippedCount = uniqueUrls.length - newUniqueUrls.length;
+
+    const results: AmazonPageResult[] = newUniqueUrls.map(({ url, keyword }) => ({
       url,
       keyword,
       state: "pending",
@@ -35,13 +44,17 @@ export async function POST(_: Request, { params }: Params) {
       note: "已归一化为达人主页，等待 Playwright 提取。",
     }));
 
-    const discoveredUrls = uniqueUrls.map((item) => item.url);
+    const discoveredUrls = newUniqueUrls.map((item) => item.url);
     const message =
-      uniqueUrls.length > 0
-        ? `${provider} 已发现 ${uniqueUrls.length} 个 Amazon 达人主页候选。`
-        : `${provider} 没有找到 Amazon 达人主页候选。`;
-
-    const nextRun = await setRunResults(id, results, "running", message);
+      uniqueUrls.length === 0
+        ? `${provider} 没有找到 Amazon 达人主页候选。`
+        : newUniqueUrls.length === 0
+          ? `${provider} 找到 ${uniqueUrls.length} 个候选，但它们都已在历史结果中收录，已全部跳过。`
+          : skippedCount > 0
+            ? `${provider} 找到 ${uniqueUrls.length} 个候选，其中 ${skippedCount} 个已存在，新增 ${newUniqueUrls.length} 个。`
+            : `${provider} 已发现 ${newUniqueUrls.length} 个新的 Amazon 达人主页候选。`
+    const nextStatus = newUniqueUrls.length > 0 ? "running" : "completed";
+    const nextRun = await setRunResults(id, results, nextStatus, message);
     await updateRun(id, {
       discoveredUrls,
     });
@@ -52,8 +65,10 @@ export async function POST(_: Request, { params }: Params) {
       ok: true,
       run: refreshedRun,
       discovery: discovered,
-      discoveredCount: uniqueUrls.length,
+      discoveredCount: newUniqueUrls.length,
+      skippedCount,
       provider,
+      message,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown_error";

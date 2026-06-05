@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { AmazonPageResult, RunRecord, RunStatus } from "./types";
+import { normalizeAmazonShopUrl } from "./amazon/url-normalizer";
 
 type StoreShape = {
   runs: RunRecord[];
@@ -50,6 +51,29 @@ function sortRuns(runs: RunRecord[]) {
 export async function listRuns() {
   const store = await loadStore();
   return sortRuns(store.runs);
+}
+
+export async function getKnownAmazonShopUrlsFromRuns() {
+  const store = await loadStore();
+  const urls = new Set<string>();
+
+  for (const run of store.runs) {
+    for (const candidate of run.discoveredUrls) {
+      const normalized = normalizeAmazonShopUrl(candidate);
+      if (normalized) {
+        urls.add(normalized);
+      }
+    }
+
+    for (const result of run.results) {
+      const normalized = normalizeAmazonShopUrl(result.url);
+      if (normalized) {
+        urls.add(normalized);
+      }
+    }
+  }
+
+  return urls;
 }
 
 export async function getRun(id: string) {
