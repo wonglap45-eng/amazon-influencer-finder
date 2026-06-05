@@ -151,9 +151,27 @@ function joinCell(values: string[]) {
   return values.length > 0 ? values.join("\n") : "";
 }
 
+function formatBeijingTimestamp(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+
+  const valueFor = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "00";
+
+  return `${valueFor("year")}-${valueFor("month")}-${valueFor("day")} ${valueFor("hour")}:${valueFor("minute")}:${valueFor("second")}`;
+}
+
 function buildAmazonResultRows(
   results: AmazonPageResult[],
-  syncedAt = new Date().toISOString(),
+  syncedAt = formatBeijingTimestamp(new Date()),
 ): SheetRow[] {
   return results.map((result) => [
     ...(() => {
