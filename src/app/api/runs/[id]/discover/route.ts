@@ -1,8 +1,15 @@
 import { getEnv } from "@/lib/config/env";
-import { getKnownAmazonShopUrlsFromRuns, getRun, setRunResults, updateRun } from "@/lib/job-store";
-import type { AmazonPageResult } from "@/lib/types";
+import {
+  getKeywordDiscoveryRound,
+  getKnownAmazonShopUrlsFromRuns,
+  getRun,
+  setRunResults,
+  updateRun,
+} from "@/lib/job-store";
 import { discoverAmazonShopUrlsForKeywords } from "@/lib/search/discover";
+import { normalizeKeywordKey } from "@/lib/search/keyword";
 import { listKnownAmazonShopUrlsFromSheet } from "@/lib/sheets";
+import type { AmazonPageResult } from "@/lib/types";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -21,12 +28,26 @@ export async function POST(_: Request, { params }: Params) {
   }
 
   try {
+    const roundsByKeywordEntries = await Promise.all(
+      run.keywords.map(async (keyword) => {
+        const key = normalizeKeywordKey(keyword);
+        const historicalRound = await getKeywordDiscoveryRound(keyword, id);
+        const currentRound = run.searchRounds?.[key] ?? 0;
+        return [key, historicalRound + currentRound] as const;
+      }),
+    );
+    const roundsByKeyword = Object.fromEntries(roundsByKeywordEntries);
+
     await updateRun(id, {
       status: "running",
-      message: `正在使用 ${provider} 发现 Amazon 店铺页面...`,
+      message: `正在使用 ${provider} 继续发现 Amazon 达人主页（会自动进入更深一轮搜索）...`,
     });
 
-    const { discovered, uniqueUrls } = await discoverAmazonShopUrlsForKeywords(run.keywords);
+    const { discovered, uniqueUrls } = await discoverAmazonShopUrlsForKeywords(
+      run.keywords,
+      roundsByKeyword,
+    );
+
     const [sheetKnownUrls, runKnownUrls] = await Promise.all([
       listKnownAmazonShopUrlsFromSheet().catch(() => new Set<string>()),
       getKnownAmazonShopUrlsFromRuns(),
@@ -52,11 +73,20 @@ export async function POST(_: Request, { params }: Params) {
           ? `${provider} 找到 ${uniqueUrls.length} 个候选，但它们都已在历史结果中收录，已全部跳过。`
           : skippedCount > 0
             ? `${provider} 找到 ${uniqueUrls.length} 个候选，其中 ${skippedCount} 个已存在，新增 ${newUniqueUrls.length} 个。`
-            : `${provider} 已发现 ${newUniqueUrls.length} 个新的 Amazon 达人主页候选。`
+            : `${provider} 已发现 ${newUniqueUrls.length} 个新的 Amazon 达人主页候选。`;
+
     const nextStatus = newUniqueUrls.length > 0 ? "running" : "completed";
     const nextRun = await setRunResults(id, results, nextStatus, message);
+    const nextSearchRounds = Object.fromEntries(
+      run.keywords.map((keyword) => {
+        const key = normalizeKeywordKey(keyword);
+        return [key, (roundsByKeyword[key] ?? 0) + 1] as const;
+      }),
+    );
+
     await updateRun(id, {
       discoveredUrls,
+      searchRounds: nextSearchRounds,
     });
 
     const refreshedRun = nextRun ?? (await getRun(id));

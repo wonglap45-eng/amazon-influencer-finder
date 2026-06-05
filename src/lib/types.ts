@@ -37,5 +37,6 @@ export type RunRecord = {
   keywords: string[];
   discoveredUrls: string[];
   results: AmazonPageResult[];
+  searchRounds?: Record<string, number>;
   message?: string;
 };

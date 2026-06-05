@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { AmazonPageResult, RunRecord, RunStatus } from "./types";
 import { normalizeAmazonShopUrl } from "./amazon/url-normalizer";
+import { normalizeKeywordKey } from "./search/keyword";
 
 type StoreShape = {
   runs: RunRecord[];
@@ -76,6 +77,18 @@ export async function getKnownAmazonShopUrlsFromRuns() {
   return urls;
 }
 
+export async function getKeywordDiscoveryRound(keyword: string, currentRunId?: string) {
+  const store = await loadStore();
+  const normalized = normalizeKeywordKey(keyword);
+
+  return store.runs.filter(
+    (run) =>
+      run.id !== currentRunId &&
+      run.status !== "queued" &&
+      run.keywords.some((item) => normalizeKeywordKey(item) === normalized),
+  ).length;
+}
+
 export async function getRun(id: string) {
   const store = await loadStore();
   return store.runs.find((run) => run.id === id) ?? null;
@@ -91,6 +104,7 @@ export async function createRun(keywords: string[]) {
     keywords,
     discoveredUrls: [],
     results: [],
+    searchRounds: {},
   };
 
   store.runs = [record, ...store.runs];

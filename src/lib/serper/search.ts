@@ -1,5 +1,6 @@
 import { getEnv } from "../config/env";
 import { normalizeAmazonShopUrl } from "../amazon/url-normalizer";
+import { normalizeKeywordKey } from "../search/keyword";
 
 type SerperOrganicResult = {
   link?: string;
@@ -31,6 +32,8 @@ export type SerperAmazonDiscovery = {
   urls: string[];
   rawResultCount: number;
 };
+
+export type DiscoveryRoundMap = Record<string, number>;
 
 async function searchAmazonShopUrlsPage(
   keyword: string,
@@ -92,10 +95,18 @@ async function searchAmazonShopUrlsPage(
 }
 
 export async function searchAmazonShopUrls(keyword: string): Promise<SerperAmazonDiscovery> {
+  return searchAmazonShopUrlsWithRound(keyword, 0);
+}
+
+export async function searchAmazonShopUrlsWithRound(
+  keyword: string,
+  round: number,
+): Promise<SerperAmazonDiscovery> {
   const queries = SERPER_QUERY_VARIANTS.map((buildQuery) => buildQuery(keyword));
+  const pageBase = round * SERPER_PAGES.length;
   const pages = await Promise.all(
     queries.flatMap((query) =>
-      SERPER_PAGES.map(async (page) => searchAmazonShopUrlsPage(keyword, query, page)),
+      SERPER_PAGES.map(async (page) => searchAmazonShopUrlsPage(keyword, query, pageBase + page)),
     ),
   );
 
@@ -109,9 +120,14 @@ export async function searchAmazonShopUrls(keyword: string): Promise<SerperAmazo
   };
 }
 
-export async function discoverAmazonShopUrlsForKeywords(keywords: string[]) {
+export async function discoverAmazonShopUrlsForKeywords(
+  keywords: string[],
+  roundsByKeyword: DiscoveryRoundMap = {},
+) {
   const discovered = await Promise.all(
-    keywords.map(async (keyword) => searchAmazonShopUrls(keyword)),
+    keywords.map(async (keyword) =>
+      searchAmazonShopUrlsWithRound(keyword, roundsByKeyword[normalizeKeywordKey(keyword)] ?? 0),
+    ),
   );
 
   const uniqueUrls = new Map<string, string>();
