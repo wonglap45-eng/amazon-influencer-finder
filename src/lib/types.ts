@@ -7,6 +7,7 @@ export type SocialLinkType =
   | "tiktok"
   | "youtube"
   | "facebook"
+  | "pinterest"
   | "linktree"
   | "website"
   | "other";

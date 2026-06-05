@@ -35,14 +35,14 @@ function platformLabelFromHost(host: string) {
   if (hostMatchesDomain(host, "facebook.com") || host === "fb.me" || host === "fb.watch") {
     return "Facebook";
   }
+  if (hostMatchesDomain(host, "pinterest.com") || hostMatchesDomain(host, "pinterest.co") || host === "pin.it") {
+    return "Pinterest";
+  }
   if (hostMatchesDomain(host, "linktr.ee") || hostMatchesDomain(host, "linktree")) return "Linktree";
   if (hostMatchesDomain(host, "x.com") || hostMatchesDomain(host, "twitter.com") || host === "t.co") {
     return "X";
   }
   if (hostMatchesDomain(host, "threads.net")) return "Threads";
-  if (hostMatchesDomain(host, "pinterest.com") || hostMatchesDomain(host, "pinterest.co")) {
-    return "Pinterest";
-  }
   if (hostMatchesDomain(host, "snapchat.com")) return "Snapchat";
   if (hostMatchesDomain(host, "twitch.tv")) return "Twitch";
   if (hostMatchesDomain(host, "reddit.com")) return "Reddit";
@@ -112,6 +112,7 @@ function classifyLink(url: URL, candidate: CandidateLink): SocialLinkType {
   if (haystack.includes("tiktok")) return "tiktok";
   if (haystack.includes("youtube") || host === "youtu.be") return "youtube";
   if (haystack.includes("facebook") || host === "fb.me") return "facebook";
+  if (haystack.includes("pinterest") || host === "pin.it") return "pinterest";
   if (haystack.includes("linktr.ee") || haystack.includes("linktree")) return "linktree";
 
   return "website";
@@ -150,13 +151,14 @@ export function extractPublicSocialLinks(
       hostMatchesDomain(url.hostname.toLowerCase(), "tiktok.com") ||
       hostMatchesDomain(url.hostname.toLowerCase(), "youtube.com") ||
       hostMatchesDomain(url.hostname.toLowerCase(), "facebook.com") ||
+      host === "pin.it" ||
+      hostMatchesDomain(url.hostname.toLowerCase(), "pinterest.com") ||
+      hostMatchesDomain(url.hostname.toLowerCase(), "pinterest.co") ||
       hostMatchesDomain(url.hostname.toLowerCase(), "linktr.ee") ||
       hostMatchesDomain(url.hostname.toLowerCase(), "linktree") ||
       hostMatchesDomain(url.hostname.toLowerCase(), "x.com") ||
       hostMatchesDomain(url.hostname.toLowerCase(), "twitter.com") ||
       hostMatchesDomain(url.hostname.toLowerCase(), "threads.net") ||
-      hostMatchesDomain(url.hostname.toLowerCase(), "pinterest.com") ||
-      hostMatchesDomain(url.hostname.toLowerCase(), "pinterest.co") ||
       hostMatchesDomain(url.hostname.toLowerCase(), "snapchat.com") ||
       hostMatchesDomain(url.hostname.toLowerCase(), "twitch.tv") ||
       hostMatchesDomain(url.hostname.toLowerCase(), "reddit.com") ||

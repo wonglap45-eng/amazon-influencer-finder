@@ -27,6 +27,7 @@ type SocialColumnBuckets = {
   tiktok: string[];
   instagram: string[];
   youtube: string[];
+  pinterest: string[];
   other: string[];
 };
 
@@ -105,6 +106,7 @@ function bucketSocialLinks(result: AmazonPageResult): SocialColumnBuckets {
     tiktok: [],
     instagram: [],
     youtube: [],
+    pinterest: [],
     other: [],
   };
 
@@ -134,6 +136,11 @@ function bucketSocialLinks(result: AmazonPageResult): SocialColumnBuckets {
       continue;
     }
 
+    if (platform.includes("pinterest")) {
+      buckets.pinterest.push(value);
+      continue;
+    }
+
     buckets.other.push(value);
   }
 
@@ -157,6 +164,7 @@ function buildAmazonResultRows(
         joinCell(buckets.tiktok),
         joinCell(buckets.instagram),
         joinCell(buckets.youtube),
+        joinCell(buckets.pinterest),
         joinCell(buckets.other),
       ];
     })(),
@@ -280,7 +288,7 @@ export async function appendAmazonResultsToSheet(
 
   const appendResult = await sheets.spreadsheets.values.append({
     spreadsheetId: env.googleSheetId,
-    range: `${quoteSheetTabName(tabName)}!A:J`,
+    range: `${quoteSheetTabName(tabName)}!A:K`,
     valueInputOption: "RAW",
     insertDataOption: "INSERT_ROWS",
     requestBody: {
