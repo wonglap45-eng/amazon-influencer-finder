@@ -191,6 +191,7 @@ export function RunWorkbench() {
         error?: string;
         run?: RunRecord;
         discoveredCount?: number;
+        provider?: string;
       };
 
       if (!response.ok || !data.ok || !data.run) {
@@ -201,7 +202,7 @@ export function RunWorkbench() {
       setRuns((current) => [data.run!, ...current.filter((run) => run.id !== data.run!.id)]);
       setDiscoverMessage(
         data.discoveredCount
-          ? `发现 ${data.discoveredCount} 个 Amazon 候选页面。`
+          ? `${data.provider ?? "当前搜索源"} 发现 ${data.discoveredCount} 个 Amazon 候选页面。`
           : "没有找到 Amazon 候选页面。",
       );
     } catch {
@@ -268,7 +269,7 @@ export function RunWorkbench() {
           <div>
             <h2 className="text-2xl font-semibold">任务工作台</h2>
             <p className="mt-1 text-sm text-slate-400">
-              先创建任务，再用 SerpAPI 发现 Amazon 页面，后续会接入抓取和写表。
+              先创建任务，再用当前搜索源发现 Amazon 页面，后续会接入抓取和写表。
             </p>
           </div>
           <div className="text-sm text-slate-300">
@@ -296,7 +297,7 @@ export function RunWorkbench() {
               <div className="text-sm font-medium text-slate-200">接下来会做什么</div>
               <ul className="mt-3 space-y-2 text-sm text-slate-400">
                 <li>- 创建任务</li>
-                <li>- 用 SerpAPI 发现 Amazon 达人主页</li>
+                <li>- 用当前搜索源发现 Amazon 达人主页</li>
                 <li>- 在本地保存候选 URL</li>
                 <li>- 为后续 Playwright 抓取做准备</li>
               </ul>
