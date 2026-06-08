@@ -67,6 +67,17 @@ function asDiscoverySummary(value: unknown): DiscoverySummary | undefined {
   const discoveredAt = typeof value.discoveredAt === "string" ? value.discoveredAt : "";
   const roundsByKeyword = asRecordOfNumbers(value.roundsByKeyword);
   const roundsCompleted = value.roundsCompleted == null ? undefined : Number(value.roundsCompleted);
+  const activeKeyword = typeof value.activeKeyword === "string" ? value.activeKeyword : undefined;
+  const activeKeywordIndex =
+    value.activeKeywordIndex == null ? undefined : Number(value.activeKeywordIndex);
+  const batchCount = value.batchCount == null ? undefined : Number(value.batchCount);
+  const batchLimit = value.batchLimit == null ? undefined : Number(value.batchLimit);
+  const awaitingDecision =
+    typeof value.awaitingDecision === "boolean" ? value.awaitingDecision : undefined;
+  const canContinueCurrent =
+    typeof value.canContinueCurrent === "boolean" ? value.canContinueCurrent : undefined;
+  const canSwitchNext =
+    typeof value.canSwitchNext === "boolean" ? value.canSwitchNext : undefined;
 
   if (!discoveredAt) return undefined;
 
@@ -76,6 +87,13 @@ function asDiscoverySummary(value: unknown): DiscoverySummary | undefined {
     roundsByKeyword,
     discoveredAt,
     ...(Number.isFinite(roundsCompleted ?? NaN) ? { roundsCompleted } : {}),
+    ...(activeKeyword ? { activeKeyword } : {}),
+    ...(Number.isFinite(activeKeywordIndex ?? NaN) ? { activeKeywordIndex } : {}),
+    ...(Number.isFinite(batchCount ?? NaN) ? { batchCount } : {}),
+    ...(Number.isFinite(batchLimit ?? NaN) ? { batchLimit } : {}),
+    ...(typeof awaitingDecision === "boolean" ? { awaitingDecision } : {}),
+    ...(typeof canContinueCurrent === "boolean" ? { canContinueCurrent } : {}),
+    ...(typeof canSwitchNext === "boolean" ? { canSwitchNext } : {}),
   };
 }
 

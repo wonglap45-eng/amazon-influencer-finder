@@ -172,9 +172,14 @@ export function RunWorkbench() {
     }
   }
 
-  async function handleDiscover() {
+  async function handleDiscover(action?: "continue_current" | "next_keyword") {
     if (!activeRunId) {
       setDiscoverMessage("未选择任务。");
+      return;
+    }
+
+    if (discoveryPromptReady && !action) {
+      setDiscoverMessage("请先选择继续当前关键词，或者切换到下一个关键词。");
       return;
     }
 
@@ -185,6 +190,7 @@ export function RunWorkbench() {
       const response = await fetch(`/api/runs/${activeRunId}/discover`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: action ? JSON.stringify({ action }) : undefined,
       });
       const data = (await response.json().catch(() => ({}))) as {
         ok?: boolean;
@@ -205,7 +211,7 @@ export function RunWorkbench() {
         data.message ??
           (data.discoveredCount
             ? `发现 ${data.discoveredCount} 个候选页面。`
-            : "没有找到 Amazon 候选页面。"),
+            : "没有找到新的候选页面。"),
       );
     } catch {
       setDiscoverMessage("发现请求失败。");
@@ -265,12 +271,9 @@ export function RunWorkbench() {
   const keywords = activeRun?.keywords ?? [];
   const discoverySummary = activeRun?.discoverySummary ?? null;
   const searchUsage = activeRun?.searchUsage ?? null;
-  const searchUsageLabel =
-    searchUsage?.provider === "serper"
-      ? "Serper"
-      : searchUsage?.provider === "serpapi"
-        ? "SerpAPI"
-        : "搜索";
+  const hasPendingResults = (stats?.pending ?? 0) > 0;
+  const discoveryPromptReady = Boolean(discoverySummary?.awaitingDecision && !hasPendingResults);
+  const searchUsageLabel = "消费额度";
 
   return (
     <section className="mx-auto w-full max-w-7xl px-6 pb-16 lg:px-10">
@@ -321,10 +324,14 @@ export function RunWorkbench() {
             <button
               type="button"
               onClick={() => void handleDiscover()}
-              disabled={discoverBusy || !activeRunId}
+              disabled={discoverBusy || !activeRunId || discoveryPromptReady}
               className="rounded-2xl border border-sky-300/30 bg-sky-300/10 px-5 py-3 text-sm font-semibold text-sky-100 transition hover:bg-sky-300/20 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {discoverBusy ? "发现中..." : "发现 Amazon 达人主页"}
+              {discoverBusy
+                ? "发现中..."
+                : discoveryPromptReady
+                  ? "请先选择下一步"
+                  : "发现下一批 30 个"}
             </button>
 
             <button
@@ -456,9 +463,12 @@ export function RunWorkbench() {
               </div>
 
               {searchUsage ? (
-                <div className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-300/10 p-4">
+                <div
+                  className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-300/10 p-4"
+                  title={searchUsageLabel}
+                >
                   <div className="text-xs uppercase tracking-wide text-amber-100/70">
-                    {searchUsageLabel} 额度
+                    消费额度
                   </div>
                   <div className="mt-3 grid gap-3 md:grid-cols-4">
                     {([
@@ -483,6 +493,37 @@ export function RunWorkbench() {
                         {keyword}: {bucket.creditsUsed}
                       </span>
                     ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {discoveryPromptReady && discoverySummary ? (
+                <div className="mt-4 rounded-2xl border border-sky-300/20 bg-sky-300/10 p-4">
+                  <div className="text-sm font-semibold text-sky-100">下一步</div>
+                  <div className="mt-1 text-xs text-slate-300">
+                    当前关键词：{discoverySummary.activeKeyword ?? keywords[0] ?? ""}
+                  </div>
+                  <div className="mt-1 text-xs text-slate-400">
+                    本批已发现 {discoverySummary.batchCount ?? discoverySummary.discoveredCount} /{" "}
+                    {discoverySummary.batchLimit ?? 30} 个候选
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={() => void handleDiscover("continue_current")}
+                      disabled={discoverBusy || discoverySummary.canContinueCurrent === false}
+                      className="rounded-2xl bg-sky-300 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-sky-200 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      继续当前关键词
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleDiscover("next_keyword")}
+                      disabled={discoverBusy || discoverySummary.canSwitchNext === false}
+                      className="rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-sm font-semibold text-slate-100 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      换下一个关键词
+                    </button>
                   </div>
                 </div>
               ) : null}

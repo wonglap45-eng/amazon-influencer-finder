@@ -4,7 +4,10 @@ import {
   getRun,
   updateRun,
 } from "@/lib/job-store";
-import { discoverAmazonShopUrlsForKeywords } from "@/lib/search/discover";
+import { getEnv } from "@/lib/config/env";
+import {
+  discoverAmazonShopUrlsForKeyword,
+} from "@/lib/search/discover";
 import { normalizeKeywordKey } from "@/lib/search/keyword";
 import { getAmazonShopDedupeKey } from "@/lib/amazon/url-normalizer";
 import { listKnownAmazonShopKeysFromSheet } from "@/lib/sheets";
@@ -12,21 +15,13 @@ import type { AmazonPageResult, SearchUsage, SearchUsageBucket } from "@/lib/typ
 
 type Params = { params: Promise<{ id: string }> };
 
-const MAX_DISCOVERY_ROUNDS_PER_REQUEST = 3;
+type DiscoverAction = "start" | "continue_current" | "next_keyword";
+
+const BATCH_SIZE = 30;
+const MAX_ROUNDS_PER_BATCH = 3;
 
 function hasPendingResults(results: AmazonPageResult[]) {
   return results.some((result) => result.state === "pending");
-}
-
-function bumpRounds(roundsByKeyword: Record<string, number>, keywords: string[]) {
-  const next = { ...roundsByKeyword };
-
-  for (const keyword of keywords) {
-    const key = normalizeKeywordKey(keyword);
-    next[key] = (next[key] ?? 0) + 1;
-  }
-
-  return next;
 }
 
 function emptyUsageBucket(): SearchUsageBucket {
@@ -38,48 +33,80 @@ function emptyUsageBucket(): SearchUsageBucket {
   };
 }
 
-function mergeUsage(current: SearchUsage | undefined, next: SearchUsage): SearchUsage {
-  const byKeyword: Record<string, SearchUsageBucket> = { ...(current?.byKeyword ?? {}) };
-  for (const [key, bucket] of Object.entries(next.byKeyword)) {
-    const existing = byKeyword[key] ?? emptyUsageBucket();
-    byKeyword[key] = {
-      attemptedRequests: existing.attemptedRequests + bucket.attemptedRequests,
-      successfulRequests: existing.successfulRequests + bucket.successfulRequests,
-      failedRequests: existing.failedRequests + bucket.failedRequests,
-      creditsUsed: existing.creditsUsed + bucket.creditsUsed,
+function mergeUsage(
+  current: SearchUsage | undefined,
+  next: SearchUsageBucket,
+  provider: SearchUsage["provider"],
+  keywordKey: string,
+  roundKey: string,
+): SearchUsage {
+  const base =
+    current ?? {
+      provider,
+      ...emptyUsageBucket(),
+      byKeyword: {},
+      byRound: {},
     };
-  }
 
-  const byRound: Record<string, SearchUsageBucket> = { ...(current?.byRound ?? {}) };
-  for (const [key, bucket] of Object.entries(next.byRound)) {
-    const existing = byRound[key] ?? emptyUsageBucket();
-    byRound[key] = {
-      attemptedRequests: existing.attemptedRequests + bucket.attemptedRequests,
-      successfulRequests: existing.successfulRequests + bucket.successfulRequests,
-      failedRequests: existing.failedRequests + bucket.failedRequests,
-      creditsUsed: existing.creditsUsed + bucket.creditsUsed,
-    };
-  }
-
-  const currentUsage = current ?? {
-    provider: next.provider,
-    ...emptyUsageBucket(),
-    byKeyword: {},
-    byRound: {},
-  };
+  const keywordBucket = base.byKeyword[keywordKey] ?? emptyUsageBucket();
+  const roundBucket = base.byRound[roundKey] ?? emptyUsageBucket();
 
   return {
-    provider: next.provider,
-    attemptedRequests: currentUsage.attemptedRequests + next.attemptedRequests,
-    successfulRequests: currentUsage.successfulRequests + next.successfulRequests,
-    failedRequests: currentUsage.failedRequests + next.failedRequests,
-    creditsUsed: currentUsage.creditsUsed + next.creditsUsed,
-    byKeyword,
-    byRound,
+    provider: base.provider,
+    attemptedRequests: base.attemptedRequests + next.attemptedRequests,
+    successfulRequests: base.successfulRequests + next.successfulRequests,
+    failedRequests: base.failedRequests + next.failedRequests,
+    creditsUsed: base.creditsUsed + next.creditsUsed,
+    byKeyword: {
+      ...base.byKeyword,
+      [keywordKey]: {
+        attemptedRequests: keywordBucket.attemptedRequests + next.attemptedRequests,
+        successfulRequests: keywordBucket.successfulRequests + next.successfulRequests,
+        failedRequests: keywordBucket.failedRequests + next.failedRequests,
+        creditsUsed: keywordBucket.creditsUsed + next.creditsUsed,
+      },
+    },
+    byRound: {
+      ...base.byRound,
+      [roundKey]: {
+        attemptedRequests: roundBucket.attemptedRequests + next.attemptedRequests,
+        successfulRequests: roundBucket.successfulRequests + next.successfulRequests,
+        failedRequests: roundBucket.failedRequests + next.failedRequests,
+        creditsUsed: roundBucket.creditsUsed + next.creditsUsed,
+      },
+    },
   };
 }
 
-export async function POST(_: Request, { params }: Params) {
+function coerceAction(value: unknown): DiscoverAction {
+  if (value === "continue_current" || value === "next_keyword") {
+    return value;
+  }
+
+  return "start";
+}
+
+function getActiveKeywordIndex(
+  action: DiscoverAction,
+  discoverySummary: {
+    activeKeywordIndex?: number;
+    activeKeyword?: string;
+  } | null,
+) {
+  if (action === "next_keyword") {
+    const currentIndex = discoverySummary?.activeKeywordIndex ?? 0;
+    return currentIndex + 1;
+  }
+
+  const savedIndex = discoverySummary?.activeKeywordIndex;
+  if (typeof savedIndex === "number" && Number.isFinite(savedIndex)) {
+    return savedIndex;
+  }
+
+  return 0;
+}
+
+export async function POST(request: Request, { params }: Params) {
   const { id } = await params;
   const run = await getRun(id);
 
@@ -91,23 +118,32 @@ export async function POST(_: Request, { params }: Params) {
     return Response.json({ error: "no_keywords" }, { status: 400 });
   }
 
-  try {
-    const historicalRounds = await Promise.all(
-      run.keywords.map(async (keyword) => {
-        const key = normalizeKeywordKey(keyword);
-        const historicalRound = await getKeywordDiscoveryRound(keyword, id);
-        const currentRound = run.searchRounds?.[key] ?? 0;
-        return [key, historicalRound + currentRound] as const;
-      }),
-    );
+  if (hasPendingResults(run.results)) {
+    return Response.json({ error: "pending_extractions" }, { status: 409 });
+  }
 
-    let roundsByKeyword = Object.fromEntries(historicalRounds);
-    const discoveredUrls = new Set(run.discoveredUrls);
-    let results = [...run.results];
-    let totalDiscovered = 0;
-    let totalSkipped = 0;
-    let roundsCompleted = 0;
-    let accumulatedUsage: SearchUsage | undefined = run.searchUsage;
+  const body = (await request.json().catch(() => ({}))) as { action?: unknown };
+  const action = coerceAction(body.action);
+  const discoverySummary = run.discoverySummary ?? null;
+
+  if (action === "next_keyword" && !discoverySummary) {
+    return Response.json({ error: "no_previous_batch" }, { status: 400 });
+  }
+
+  const activeKeywordIndex = getActiveKeywordIndex(action, discoverySummary);
+
+  if (activeKeywordIndex < 0 || activeKeywordIndex >= run.keywords.length) {
+    return Response.json({ error: "no_more_keywords" }, { status: 400 });
+  }
+
+  const activeKeyword = run.keywords[activeKeywordIndex];
+  const normalizedKeyword = normalizeKeywordKey(activeKeyword);
+  const env = getEnv();
+  const provider = env.searchProvider === "serper" ? "serper" : "serpapi";
+
+  try {
+    const historicalRound = await getKeywordDiscoveryRound(activeKeyword, id);
+    const currentRound = (run.searchRounds?.[normalizedKeyword] ?? 0) + historicalRound;
 
     const [sheetKnownKeys, runKnownKeys] = await Promise.all([
       listKnownAmazonShopKeysFromSheet().catch(() => new Set<string>()),
@@ -117,89 +153,135 @@ export async function POST(_: Request, { params }: Params) {
 
     await updateRun(id, {
       status: "running",
-      message: "正在发现候选页面...",
+      message: `正在发现关键词「${activeKeyword}」的达人主页...`,
+      discoverySummary: {
+        discoveredCount: 0,
+        skippedCount: 0,
+        roundsByKeyword: {
+          ...(run.searchRounds ?? {}),
+          [normalizedKeyword]: currentRound,
+        },
+        discoveredAt: new Date().toISOString(),
+        roundsCompleted: 0,
+        activeKeyword,
+        activeKeywordIndex,
+        batchCount: 0,
+        batchLimit: BATCH_SIZE,
+        awaitingDecision: false,
+        canContinueCurrent: true,
+        canSwitchNext: activeKeywordIndex + 1 < run.keywords.length,
+      },
     });
 
-    for (let roundIndex = 0; roundIndex < MAX_DISCOVERY_ROUNDS_PER_REQUEST; roundIndex += 1) {
-      const { uniqueUrls, usage } = await discoverAmazonShopUrlsForKeywords(
-        run.keywords,
-        roundsByKeyword,
+    const discoveredUrls = new Set(run.discoveredUrls);
+    let results = [...run.results];
+    let totalDiscovered = 0;
+    let totalSkipped = 0;
+    let roundsCompleted = 0;
+    let nextRound = currentRound;
+    let accumulatedUsage: SearchUsage | undefined = run.searchUsage;
+    let exhaustedCurrentKeyword = false;
+
+    for (let roundIndex = 0; roundIndex < MAX_ROUNDS_PER_BATCH; roundIndex += 1) {
+      if (totalDiscovered >= BATCH_SIZE) {
+        break;
+      }
+
+      const roundNumber = nextRound;
+      const roundDiscovery = await discoverAmazonShopUrlsForKeyword(activeKeyword, roundNumber);
+      roundsCompleted += 1;
+      nextRound += 1;
+      accumulatedUsage = mergeUsage(
+        accumulatedUsage,
+        roundDiscovery.usage,
+        provider,
+        normalizedKeyword,
+        `${normalizedKeyword}#${roundNumber}`,
       );
 
-      roundsCompleted += 1;
-      accumulatedUsage = mergeUsage(accumulatedUsage, usage);
-
-      const newCandidates: AmazonPageResult[] = [];
+      const freshCandidates: AmazonPageResult[] = [];
       let skippedThisRound = 0;
 
-      for (const candidate of uniqueUrls) {
-        const key = getAmazonShopDedupeKey(candidate.url);
-        if (!key || knownKeys.has(key)) {
+      for (const candidateUrl of roundDiscovery.urls) {
+        if (freshCandidates.length + totalDiscovered >= BATCH_SIZE) {
+          break;
+        }
+
+        const key = getAmazonShopDedupeKey(candidateUrl);
+        if (!key || knownKeys.has(key) || discoveredUrls.has(candidateUrl)) {
           skippedThisRound += 1;
           continue;
         }
 
         knownKeys.add(key);
-        discoveredUrls.add(candidate.url);
-        newCandidates.push({
-          url: candidate.url,
-          keyword: candidate.keyword,
+        discoveredUrls.add(candidateUrl);
+        freshCandidates.push({
+          url: candidateUrl,
+          keyword: activeKeyword,
           state: "pending",
           socialLinks: [],
-          note: "待处理。",
+          note: "待提取。",
         });
       }
 
-      totalDiscovered += newCandidates.length;
+      totalDiscovered += freshCandidates.length;
       totalSkipped += skippedThisRound;
-      roundsByKeyword = bumpRounds(roundsByKeyword, run.keywords);
 
-      if (newCandidates.length > 0) {
-        results = [...results, ...newCandidates];
-        await updateRun(id, {
-          status: "running",
-          results,
-          discoveredUrls: Array.from(discoveredUrls),
-          searchRounds: roundsByKeyword,
-          discoverySummary: {
-            discoveredCount: totalDiscovered,
-            skippedCount: totalSkipped,
-            roundsByKeyword,
-            discoveredAt: new Date().toISOString(),
-            roundsCompleted,
-          },
-          searchUsage: accumulatedUsage,
-          message:
-            totalSkipped > 0
-              ? `本次新增 ${totalDiscovered} 个，跳过 ${totalSkipped} 个。`
-              : `已发现 ${totalDiscovered} 个新候选。`,
-        });
-      } else {
-        await updateRun(id, {
-          status: hasPendingResults(results) ? "running" : "completed",
-          discoveredUrls: Array.from(discoveredUrls),
-          searchRounds: roundsByKeyword,
-          discoverySummary: {
-            discoveredCount: totalDiscovered,
-            skippedCount: totalSkipped,
-            roundsByKeyword,
-            discoveredAt: new Date().toISOString(),
-            roundsCompleted,
-          },
-          searchUsage: accumulatedUsage,
-          message:
-            uniqueUrls.length === 0
-              ? "没有找到候选页面。"
-              : totalDiscovered === 0
-                ? "没有新增候选页面。"
-                : `本次新增 ${totalDiscovered} 个，跳过 ${totalSkipped} 个。`,
-        });
+      if (freshCandidates.length > 0) {
+        results = [...results, ...freshCandidates];
+      }
 
-        if (uniqueUrls.length === 0) {
-          break;
-        }
+      if (roundDiscovery.urls.length === 0 || freshCandidates.length === 0) {
+        exhaustedCurrentKeyword = roundDiscovery.urls.length === 0;
+      }
+
+      if (totalDiscovered >= BATCH_SIZE) {
+        break;
+      }
+
+      if (roundDiscovery.urls.length === 0) {
+        break;
       }
     }
+
+    const nextSearchRounds = {
+      ...(run.searchRounds ?? {}),
+      [normalizedKeyword]: nextRound,
+    };
+
+    const canContinueCurrent = !exhaustedCurrentKeyword || totalDiscovered > 0;
+    const canSwitchNext = activeKeywordIndex + 1 < run.keywords.length;
+    const awaitingDecision = canSwitchNext || totalDiscovered > 0;
+
+    await updateRun(id, {
+      status: totalDiscovered > 0 ? "running" : hasPendingResults(results) ? "running" : "completed",
+      results,
+      discoveredUrls: Array.from(discoveredUrls),
+      searchRounds: nextSearchRounds,
+      discoverySummary: {
+        discoveredCount: totalDiscovered,
+        skippedCount: totalSkipped,
+        roundsByKeyword: nextSearchRounds,
+        discoveredAt: new Date().toISOString(),
+        roundsCompleted,
+        activeKeyword,
+        activeKeywordIndex,
+        batchCount: totalDiscovered,
+        batchLimit: BATCH_SIZE,
+        awaitingDecision,
+        canContinueCurrent,
+        canSwitchNext,
+      },
+      searchUsage: accumulatedUsage,
+      message:
+        totalDiscovered > 0
+          ? awaitingDecision
+            ? `已发现 ${totalDiscovered} 个候选。提取完后可继续当前关键词或切换下一个。`
+            : `已发现 ${totalDiscovered} 个候选。`
+          : canSwitchNext
+            ? "当前关键词没有新结果，可以切换到下一个关键词。"
+            : "没有发现新的候选页面。",
+    });
 
     const refreshedRun = await getRun(id);
 
@@ -211,11 +293,13 @@ export async function POST(_: Request, { params }: Params) {
       roundsCompleted,
       searchUsage: accumulatedUsage,
       message:
-        totalDiscovered === 0
-          ? "没有新增候选页面。"
-          : totalSkipped > 0
-            ? `本次新增 ${totalDiscovered} 个，跳过 ${totalSkipped} 个。`
-            : `已发现 ${totalDiscovered} 个新候选。`,
+        totalDiscovered > 0
+          ? awaitingDecision
+            ? `已发现 ${totalDiscovered} 个候选。提取完后可继续当前关键词或切换下一个。`
+            : `已发现 ${totalDiscovered} 个候选。`
+          : canSwitchNext
+            ? "当前关键词没有新结果，可以切换到下一个关键词。"
+            : "没有发现新的候选页面。",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown_error";

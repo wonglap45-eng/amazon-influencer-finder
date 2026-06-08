@@ -1,6 +1,12 @@
 import { getEnv } from "@/lib/config/env";
-import { discoverAmazonShopUrlsForKeywords as discoverWithSerpApi } from "@/lib/serpapi/search";
-import { discoverAmazonShopUrlsForKeywords as discoverWithSerper } from "@/lib/serper/search";
+import {
+  discoverAmazonShopUrlsForKeywords as discoverWithSerpApiKeywords,
+  searchAmazonShopUrlsWithRound as searchWithSerpApiRound,
+} from "@/lib/serpapi/search";
+import {
+  discoverAmazonShopUrlsForKeywords as discoverWithSerperKeywords,
+  searchAmazonShopUrlsWithRound as searchWithSerperRound,
+} from "@/lib/serper/search";
 import type { SearchUsage } from "@/lib/types";
 
 type DiscoveryRoundMap = Record<string, number>;
@@ -12,10 +18,20 @@ export async function discoverAmazonShopUrlsForKeywords(
   const env = getEnv();
 
   if (env.searchProvider === "serper") {
-    return discoverWithSerper(keywords, roundsByKeyword);
+    return discoverWithSerperKeywords(keywords, roundsByKeyword);
   }
 
-  return discoverWithSerpApi(keywords, roundsByKeyword);
+  return discoverWithSerpApiKeywords(keywords, roundsByKeyword);
+}
+
+export async function discoverAmazonShopUrlsForKeyword(keyword: string, round = 0) {
+  const env = getEnv();
+
+  if (env.searchProvider === "serper") {
+    return searchWithSerperRound(keyword, round);
+  }
+
+  return searchWithSerpApiRound(keyword, round);
 }
 
 export type SearchDiscoveryResult = Awaited<ReturnType<typeof discoverAmazonShopUrlsForKeywords>> & {

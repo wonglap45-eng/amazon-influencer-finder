@@ -25,6 +25,13 @@ export type DiscoverySummary = {
   roundsByKeyword: Record<string, number>;
   discoveredAt: string;
   roundsCompleted?: number;
+  activeKeyword?: string;
+  activeKeywordIndex?: number;
+  batchCount?: number;
+  batchLimit?: number;
+  awaitingDecision?: boolean;
+  canContinueCurrent?: boolean;
+  canSwitchNext?: boolean;
 };
 
 export type SearchUsageBucket = {
