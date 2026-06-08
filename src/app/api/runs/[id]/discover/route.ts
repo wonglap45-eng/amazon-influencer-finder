@@ -8,7 +8,7 @@ import { discoverAmazonShopUrlsForKeywords } from "@/lib/search/discover";
 import { normalizeKeywordKey } from "@/lib/search/keyword";
 import { getAmazonShopDedupeKey } from "@/lib/amazon/url-normalizer";
 import { listKnownAmazonShopKeysFromSheet } from "@/lib/sheets";
-import type { AmazonPageResult } from "@/lib/types";
+import type { AmazonPageResult, SearchUsage, SearchUsageBucket } from "@/lib/types";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -27,6 +27,56 @@ function bumpRounds(roundsByKeyword: Record<string, number>, keywords: string[])
   }
 
   return next;
+}
+
+function emptyUsageBucket(): SearchUsageBucket {
+  return {
+    attemptedRequests: 0,
+    successfulRequests: 0,
+    failedRequests: 0,
+    creditsUsed: 0,
+  };
+}
+
+function mergeUsage(current: SearchUsage | undefined, next: SearchUsage): SearchUsage {
+  const byKeyword: Record<string, SearchUsageBucket> = { ...(current?.byKeyword ?? {}) };
+  for (const [key, bucket] of Object.entries(next.byKeyword)) {
+    const existing = byKeyword[key] ?? emptyUsageBucket();
+    byKeyword[key] = {
+      attemptedRequests: existing.attemptedRequests + bucket.attemptedRequests,
+      successfulRequests: existing.successfulRequests + bucket.successfulRequests,
+      failedRequests: existing.failedRequests + bucket.failedRequests,
+      creditsUsed: existing.creditsUsed + bucket.creditsUsed,
+    };
+  }
+
+  const byRound: Record<string, SearchUsageBucket> = { ...(current?.byRound ?? {}) };
+  for (const [key, bucket] of Object.entries(next.byRound)) {
+    const existing = byRound[key] ?? emptyUsageBucket();
+    byRound[key] = {
+      attemptedRequests: existing.attemptedRequests + bucket.attemptedRequests,
+      successfulRequests: existing.successfulRequests + bucket.successfulRequests,
+      failedRequests: existing.failedRequests + bucket.failedRequests,
+      creditsUsed: existing.creditsUsed + bucket.creditsUsed,
+    };
+  }
+
+  const currentUsage = current ?? {
+    provider: next.provider,
+    ...emptyUsageBucket(),
+    byKeyword: {},
+    byRound: {},
+  };
+
+  return {
+    provider: next.provider,
+    attemptedRequests: currentUsage.attemptedRequests + next.attemptedRequests,
+    successfulRequests: currentUsage.successfulRequests + next.successfulRequests,
+    failedRequests: currentUsage.failedRequests + next.failedRequests,
+    creditsUsed: currentUsage.creditsUsed + next.creditsUsed,
+    byKeyword,
+    byRound,
+  };
 }
 
 export async function POST(_: Request, { params }: Params) {
@@ -57,6 +107,7 @@ export async function POST(_: Request, { params }: Params) {
     let totalDiscovered = 0;
     let totalSkipped = 0;
     let roundsCompleted = 0;
+    let accumulatedUsage: SearchUsage | undefined = run.searchUsage;
 
     const [sheetKnownKeys, runKnownKeys] = await Promise.all([
       listKnownAmazonShopKeysFromSheet().catch(() => new Set<string>()),
@@ -70,8 +121,13 @@ export async function POST(_: Request, { params }: Params) {
     });
 
     for (let roundIndex = 0; roundIndex < MAX_DISCOVERY_ROUNDS_PER_REQUEST; roundIndex += 1) {
-      const { uniqueUrls } = await discoverAmazonShopUrlsForKeywords(run.keywords, roundsByKeyword);
+      const { uniqueUrls, usage } = await discoverAmazonShopUrlsForKeywords(
+        run.keywords,
+        roundsByKeyword,
+      );
+
       roundsCompleted += 1;
+      accumulatedUsage = mergeUsage(accumulatedUsage, usage);
 
       const newCandidates: AmazonPageResult[] = [];
       let skippedThisRound = 0;
@@ -112,6 +168,7 @@ export async function POST(_: Request, { params }: Params) {
             discoveredAt: new Date().toISOString(),
             roundsCompleted,
           },
+          searchUsage: accumulatedUsage,
           message:
             totalSkipped > 0
               ? `本次新增 ${totalDiscovered} 个，跳过 ${totalSkipped} 个。`
@@ -119,7 +176,7 @@ export async function POST(_: Request, { params }: Params) {
         });
       } else {
         await updateRun(id, {
-          status: results.length && hasPendingResults(results) ? "running" : "completed",
+          status: hasPendingResults(results) ? "running" : "completed",
           discoveredUrls: Array.from(discoveredUrls),
           searchRounds: roundsByKeyword,
           discoverySummary: {
@@ -129,6 +186,7 @@ export async function POST(_: Request, { params }: Params) {
             discoveredAt: new Date().toISOString(),
             roundsCompleted,
           },
+          searchUsage: accumulatedUsage,
           message:
             uniqueUrls.length === 0
               ? "没有找到候选页面。"
@@ -151,6 +209,7 @@ export async function POST(_: Request, { params }: Params) {
       discoveredCount: totalDiscovered,
       skippedCount: totalSkipped,
       roundsCompleted,
+      searchUsage: accumulatedUsage,
       message:
         totalDiscovered === 0
           ? "没有新增候选页面。"

@@ -27,6 +27,19 @@ export type DiscoverySummary = {
   roundsCompleted?: number;
 };
 
+export type SearchUsageBucket = {
+  attemptedRequests: number;
+  successfulRequests: number;
+  failedRequests: number;
+  creditsUsed: number;
+};
+
+export type SearchUsage = SearchUsageBucket & {
+  provider: "serpapi" | "serper";
+  byKeyword: Record<string, SearchUsageBucket>;
+  byRound: Record<string, SearchUsageBucket>;
+};
+
 export type AmazonPageResult = {
   url: string;
   keyword: string;
@@ -50,5 +63,6 @@ export type RunRecord = {
   results: AmazonPageResult[];
   searchRounds?: Record<string, number>;
   discoverySummary?: DiscoverySummary;
+  searchUsage?: SearchUsage;
   message?: string;
 };

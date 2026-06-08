@@ -264,6 +264,13 @@ export function RunWorkbench() {
   const stats = activeRun ? summaryForResults(activeRun.results) : null;
   const keywords = activeRun?.keywords ?? [];
   const discoverySummary = activeRun?.discoverySummary ?? null;
+  const searchUsage = activeRun?.searchUsage ?? null;
+  const searchUsageLabel =
+    searchUsage?.provider === "serper"
+      ? "Serper"
+      : searchUsage?.provider === "serpapi"
+        ? "SerpAPI"
+        : "搜索";
 
   return (
     <section className="mx-auto w-full max-w-7xl px-6 pb-16 lg:px-10">
@@ -447,6 +454,38 @@ export function RunWorkbench() {
                     </div>
                   ))}
               </div>
+
+              {searchUsage ? (
+                <div className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-300/10 p-4">
+                  <div className="text-xs uppercase tracking-wide text-amber-100/70">
+                    {searchUsageLabel} 额度
+                  </div>
+                  <div className="mt-3 grid gap-3 md:grid-cols-4">
+                    {([
+                      ["总消耗", searchUsage.creditsUsed],
+                      ["请求次数", searchUsage.attemptedRequests],
+                      ["成功次数", searchUsage.successfulRequests],
+                      ["失败次数", searchUsage.failedRequests],
+                    ] as const).map(([label, value]) => (
+                      <div key={label} className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                        <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
+                        <div className="mt-2 text-2xl font-semibold text-slate-100">{value}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {Object.entries(searchUsage.byKeyword).map(([keyword, bucket]) => (
+                      <span
+                        key={keyword}
+                        className="rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-slate-200"
+                        title={`${keyword} -> ${bucket.creditsUsed} credits`}
+                      >
+                        {keyword}: {bucket.creditsUsed}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
 
               {discoverySummary ? (
                 <div className="mt-4 grid gap-3 md:grid-cols-2">

@@ -4,7 +4,14 @@ import { randomUUID } from "node:crypto";
 import { getEnv } from "./config/env";
 import { getAmazonShopDedupeKey } from "./amazon/url-normalizer";
 import { getSheetsClient, quoteSheetTabName } from "./sheets";
-import type { AmazonPageResult, DiscoverySummary, RunRecord, RunStatus } from "./types";
+import type {
+  AmazonPageResult,
+  DiscoverySummary,
+  RunRecord,
+  RunStatus,
+  SearchUsage,
+  SearchUsageBucket,
+} from "./types";
 import { normalizeKeywordKey } from "./search/keyword";
 
 type StoreShape = {
@@ -69,6 +76,71 @@ function asDiscoverySummary(value: unknown): DiscoverySummary | undefined {
     roundsByKeyword,
     discoveredAt,
     ...(Number.isFinite(roundsCompleted ?? NaN) ? { roundsCompleted } : {}),
+  };
+}
+
+function asUsageBucket(value: unknown): SearchUsageBucket | undefined {
+  if (!isObject(value)) return undefined;
+
+  const attemptedRequests = Number(value.attemptedRequests ?? 0);
+  const successfulRequests = Number(value.successfulRequests ?? 0);
+  const failedRequests = Number(value.failedRequests ?? 0);
+  const creditsUsed = Number(value.creditsUsed ?? 0);
+
+  if (
+    !Number.isFinite(attemptedRequests) &&
+    !Number.isFinite(successfulRequests) &&
+    !Number.isFinite(failedRequests) &&
+    !Number.isFinite(creditsUsed)
+  ) {
+    return undefined;
+  }
+
+  return {
+    attemptedRequests: Number.isFinite(attemptedRequests) ? attemptedRequests : 0,
+    successfulRequests: Number.isFinite(successfulRequests) ? successfulRequests : 0,
+    failedRequests: Number.isFinite(failedRequests) ? failedRequests : 0,
+    creditsUsed: Number.isFinite(creditsUsed) ? creditsUsed : 0,
+  };
+}
+
+function asSearchUsage(value: unknown): SearchUsage | undefined {
+  if (!isObject(value)) return undefined;
+
+  const provider = value.provider;
+  const base = asUsageBucket(value);
+  if (
+    !base ||
+    (provider !== "serpapi" && provider !== "serper")
+  ) {
+    return undefined;
+  }
+
+  const byKeyword: Record<string, SearchUsageBucket> = {};
+  if (isObject(value.byKeyword)) {
+    for (const [key, bucket] of Object.entries(value.byKeyword)) {
+      const parsed = asUsageBucket(bucket);
+      if (parsed) {
+        byKeyword[key] = parsed;
+      }
+    }
+  }
+
+  const byRound: Record<string, SearchUsageBucket> = {};
+  if (isObject(value.byRound)) {
+    for (const [key, bucket] of Object.entries(value.byRound)) {
+      const parsed = asUsageBucket(bucket);
+      if (parsed) {
+        byRound[key] = parsed;
+      }
+    }
+  }
+
+  return {
+    provider,
+    ...base,
+    byKeyword,
+    byRound,
   };
 }
 
@@ -185,6 +257,11 @@ function asRunRecord(value: unknown): RunRecord | null {
   const discoverySummary = asDiscoverySummary(value.discoverySummary);
   if (discoverySummary) {
     run.discoverySummary = discoverySummary;
+  }
+
+  const searchUsage = asSearchUsage(value.searchUsage);
+  if (searchUsage) {
+    run.searchUsage = searchUsage;
   }
 
   if (typeof value.message === "string" && value.message) {
